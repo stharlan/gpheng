@@ -47,18 +47,9 @@ typedef struct {
 	GLuint VertexShader;
 	GLuint FragmentShader;
 	GLuint ShaderProgram;
-	INDEXED_LIST idxList[3];
+	INDEXED_LIST* lpIdxList;
 	GLuint NumIdxList;
 } GLCONTEXT;
-
-GLCONTEXT g_ctx = {
-	0, 0, 0, 0,
-	{
-		{ 0, 0, 0, nullptr, nullptr },
-		{ 0, 0, 0, nullptr, nullptr }
-	},
-	3 // this needs to change with array size above
-};
 
 // Global Variables:
 HINSTANCE hInst;                                // current instance
@@ -75,7 +66,7 @@ HGLRC InitOpengl(HWND hwnd, HDC hdc);
 HANDLE hRenderThread = nullptr;
 HANDLE hStopEvent = nullptr;
 
-float g_ex = 25.0f, g_ey = 5.5f, g_ez = 25.0f;
+float g_ex = 15.0f, g_ey = 20.0f, g_ez = 15.0f;
 float g_az = -45.0f, g_el = 0.0f;
 
 DWORD g_KeysDown = 0;
@@ -113,6 +104,7 @@ PFNGLUNIFORM3FVPROC glUniform3fv;
 PFNGLDELETEBUFFERSPROC glDeleteBuffers;
 PFNGLDELETEPROGRAMPROC glDeleteProgram;
 PFNGLDELETESHADERPROC glDeleteShader;
+PFNGLTEXSTORAGE2DPROC glTexStorage2D;
 
 class MyAllocator : public physx::PxAllocatorCallback
 {
@@ -153,6 +145,14 @@ physx::PxRigidStatic* groundPlane = nullptr;
 physx::PxControllerManager *cmanager = nullptr;
 physx::PxController *pChar = nullptr;
 physx::PxCooking* cooking = nullptr;
+
+void DumpGlErrors(const char* FunctionName)
+{
+	GLenum err;
+	while ((err = glGetError()) != GL_NO_ERROR) {
+		cout << "GL ERROR: " << FunctionName << ": " << hex << err << dec << endl;
+	}
+}
 
 // to get the vector projection of a on to plane
 void ProjectVecOnPlaneNormal(glm::vec3 &a, glm::vec3 &n, glm::vec3 &c)
@@ -214,6 +214,7 @@ void GetGlFuncs()
 	glDeleteProgram = (PFNGLDELETEPROGRAMPROC)wglGetProcAddress("glDeleteProgram");
 	glDeleteShader = (PFNGLDELETESHADERPROC)wglGetProcAddress("glDeleteShader");
 	glUniform3fv = (PFNGLUNIFORM3FVPROC)wglGetProcAddress("glUniform3fv");
+	glTexStorage2D = (PFNGLTEXSTORAGE2DPROC)wglGetProcAddress("glTexStorage2D");
 }
 
 void SetupRenderingContext()
@@ -302,13 +303,11 @@ void CreateCubes(unsigned int numCubes, CUBE* cubeList, INDEXED_LIST* lpList)
 		CUBE* cb = cubeList + c;
 
 		// face 1 vertices x/y neg z
-		// pos x,y,z
-		// tex u,v
-		// norm i,j,k
-		ptr[0] = cb->ox;           ptr[1] = cb->oy;           ptr[2] = cb->oz;  ptr[3] = 0.0f;  ptr[4] = 1.0f;   ptr[5] = 0.0f;  ptr[6] = 0.0f;  ptr[7] = 1.0f;
+		// pos x,y,z		                                                    tex u,v		                     norm i,j,k
+		ptr[0] = cb->ox;           ptr[1] = cb->oy;           ptr[2] = cb->oz;  ptr[3] = 0.0f;  ptr[4] = cb->dy;   ptr[5] = 0.0f;  ptr[6] = 0.0f;  ptr[7] = 1.0f;
 		ptr[8] = cb->ox;           ptr[9] = cb->oy + cb->dy;  ptr[10] = cb->oz; ptr[11] = 0.0f; ptr[12] = 0.0f;  ptr[13] = 0.0f; ptr[14] = 0.0f; ptr[15] = 1.0f;
-		ptr[16] = cb->ox + cb->dx; ptr[17] = cb->oy + cb->dy; ptr[18] = cb->oz; ptr[19] = 1.0f; ptr[20] = 0.0f;  ptr[21] = 0.0f; ptr[22] = 0.0f; ptr[23] = 1.0f;
-		ptr[24] = cb->ox + cb->dx; ptr[25] = cb->oy;          ptr[26] = cb->oz; ptr[27] = 1.0f; ptr[28] = 1.0f;  ptr[29] = 0.0f; ptr[30] = 0.0f; ptr[31] = 1.0f;
+		ptr[16] = cb->ox + cb->dx; ptr[17] = cb->oy + cb->dy; ptr[18] = cb->oz; ptr[19] = cb->dx; ptr[20] = 0.0f;  ptr[21] = 0.0f; ptr[22] = 0.0f; ptr[23] = 1.0f;
+		ptr[24] = cb->ox + cb->dx; ptr[25] = cb->oy;          ptr[26] = cb->oz; ptr[27] = cb->dx; ptr[28] = cb->dy;  ptr[29] = 0.0f; ptr[30] = 0.0f; ptr[31] = 1.0f;
 
 		// face 1 indexes
 		iptr[0] = (c * 24) + 0; iptr[1] = (c * 24) + 2; iptr[2] = (c * 24) + 1;
@@ -316,49 +315,49 @@ void CreateCubes(unsigned int numCubes, CUBE* cubeList, INDEXED_LIST* lpList)
 
 		// face 2 vertices x/y pos z
 		// pos x,y,z
-		ptr[32] = cb->ox;          ptr[33] = cb->oy;          ptr[34] = cb->oz + cb->dz; ptr[35] = 0.0f; ptr[36] = 1.0f; ptr[37] = 0.0f; ptr[38] = 0.0f; ptr[39] = -1.0f;
+		ptr[32] = cb->ox;          ptr[33] = cb->oy;          ptr[34] = cb->oz + cb->dz; ptr[35] = 0.0f; ptr[36] = cb->dy; ptr[37] = 0.0f; ptr[38] = 0.0f; ptr[39] = -1.0f;
 		ptr[40] = cb->ox;          ptr[41] = cb->oy + cb->dy; ptr[42] = cb->oz + cb->dz; ptr[43] = 0.0f; ptr[44] = 0.0f; ptr[45] = 0.0f; ptr[46] = 0.0f; ptr[47] = -1.0f;
-		ptr[48] = cb->ox + cb->dx; ptr[49] = cb->oy + cb->dy; ptr[50] = cb->oz + cb->dz; ptr[51] = 1.0f; ptr[52] = 0.0f; ptr[53] = 0.0f; ptr[54] = 0.0f; ptr[55] = -1.0f;
-		ptr[56] = cb->ox + cb->dx; ptr[57] = cb->oy;          ptr[58] = cb->oz + cb->dz; ptr[59] = 1.0f; ptr[60] = 1.0f; ptr[61] = 0.0f; ptr[62] = 0.0f; ptr[63] = -1.0f;
+		ptr[48] = cb->ox + cb->dx; ptr[49] = cb->oy + cb->dy; ptr[50] = cb->oz + cb->dz; ptr[51] = cb->dx; ptr[52] = 0.0f; ptr[53] = 0.0f; ptr[54] = 0.0f; ptr[55] = -1.0f;
+		ptr[56] = cb->ox + cb->dx; ptr[57] = cb->oy;          ptr[58] = cb->oz + cb->dz; ptr[59] = cb->dx; ptr[60] = cb->dy; ptr[61] = 0.0f; ptr[62] = 0.0f; ptr[63] = -1.0f;
 
 		iptr[6] = (c * 24) + 4; iptr[7] = (c * 24) + 5; iptr[8] = (c * 24) + 6;
 		iptr[9] = (c * 24) + 4; iptr[10] = (c * 24) + 6; iptr[11] = (c * 24) + 7;
 
 		// face 3 vertices x/y pos z
-		ptr[64] = cb->ox;          ptr[65] = cb->oy; ptr[66] = cb->oz;          ptr[67] = 0.0f; ptr[68] = 1.0f; ptr[69] = 0.0f; ptr[70] = 1.0f; ptr[71] = 0.0f;
+		ptr[64] = cb->ox;          ptr[65] = cb->oy; ptr[66] = cb->oz;          ptr[67] = 0.0f; ptr[68] = cb->dz; ptr[69] = 0.0f; ptr[70] = 1.0f; ptr[71] = 0.0f;
 		ptr[72] = cb->ox;          ptr[73] = cb->oy; ptr[74] = cb->oz + cb->dz; ptr[75] = 0.0f; ptr[76] = 0.0f; ptr[77] = 0.0f; ptr[78] = 1.0f; ptr[79] = 0.0f;
-		ptr[80] = cb->ox + cb->dx; ptr[81] = cb->oy; ptr[82] = cb->oz + cb->dz; ptr[83] = 1.0f; ptr[84] = 0.0f; ptr[85] = 0.0f; ptr[86] = 1.0f; ptr[87] = 0.0f;
-		ptr[88] = cb->ox + cb->dx; ptr[89] = cb->oy; ptr[90] = cb->oz;          ptr[91] = 1.0f; ptr[92] = 1.0f; ptr[93] = 0.0f; ptr[94] = 1.0f; ptr[95] = 0.0f;
+		ptr[80] = cb->ox + cb->dx; ptr[81] = cb->oy; ptr[82] = cb->oz + cb->dz; ptr[83] = cb->dx; ptr[84] = 0.0f; ptr[85] = 0.0f; ptr[86] = 1.0f; ptr[87] = 0.0f;
+		ptr[88] = cb->ox + cb->dx; ptr[89] = cb->oy; ptr[90] = cb->oz;          ptr[91] = cb->dx; ptr[92] = cb->dz; ptr[93] = 0.0f; ptr[94] = 1.0f; ptr[95] = 0.0f;
 
 		// face 3 indexes
 		iptr[12] = (c * 24) + 8; iptr[13] = (c * 24) + 9; iptr[14] = (c * 24) + 10;
 		iptr[15] = (c * 24) + 8; iptr[16] = (c * 24) + 10; iptr[17] = (c * 24) + 11;
 
 		// face 4 vertices x/y pos z
-		ptr[96] = cb->ox;           ptr[97] = cb->oy + cb->dy;  ptr[98] = cb->oz;           ptr[99] = 0.0f;  ptr[100] = 1.0f; ptr[101] = 0.0f; ptr[102] = -1.0f; ptr[103] = 0.0f;
+		ptr[96] = cb->ox;           ptr[97] = cb->oy + cb->dy;  ptr[98] = cb->oz;           ptr[99] = 0.0f;  ptr[100] = cb->dz; ptr[101] = 0.0f; ptr[102] = -1.0f; ptr[103] = 0.0f;
 		ptr[104] = cb->ox;          ptr[105] = cb->oy + cb->dy; ptr[106] = cb->oz + cb->dz; ptr[107] = 0.0f; ptr[108] = 0.0f; ptr[109] = 0.0f; ptr[110] = -1.0f; ptr[111] = 0.0f;
-		ptr[112] = cb->ox + cb->dx; ptr[113] = cb->oy + cb->dy; ptr[114] = cb->oz + cb->dz; ptr[115] = 1.0f; ptr[116] = 0.0f; ptr[117] = 0.0f; ptr[118] = -1.0f; ptr[119] = 0.0f;
-		ptr[120] = cb->ox + cb->dx; ptr[121] = cb->oy + cb->dy; ptr[122] = cb->oz;          ptr[123] = 1.0f; ptr[124] = 1.0f; ptr[125] = 0.0f; ptr[126] = -1.0f; ptr[127] = 0.0f;
+		ptr[112] = cb->ox + cb->dx; ptr[113] = cb->oy + cb->dy; ptr[114] = cb->oz + cb->dz; ptr[115] = cb->dx; ptr[116] = 0.0f; ptr[117] = 0.0f; ptr[118] = -1.0f; ptr[119] = 0.0f;
+		ptr[120] = cb->ox + cb->dx; ptr[121] = cb->oy + cb->dy; ptr[122] = cb->oz;          ptr[123] = cb->dx; ptr[124] = cb->dz; ptr[125] = 0.0f; ptr[126] = -1.0f; ptr[127] = 0.0f;
 
 		// face 4 indexes
 		iptr[18] = (c * 24) + 12; iptr[19] = (c * 24) + 14; iptr[20] = (c * 24) + 13;
 		iptr[21] = (c * 24) + 12; iptr[22] = (c * 24) + 15; iptr[23] = (c * 24) + 14;
 
 		// face 4 vertices x/y pos z
-		ptr[128] = cb->ox; ptr[129] = cb->oy;          ptr[130] = cb->oz;          ptr[131] = 0.0f; ptr[132] = 1.0f; ptr[133] = -1.0f; ptr[134] = 0.0f; ptr[135] = 0.0f;
+		ptr[128] = cb->ox; ptr[129] = cb->oy;          ptr[130] = cb->oz;          ptr[131] = 0.0f; ptr[132] = cb->dz; ptr[133] = -1.0f; ptr[134] = 0.0f; ptr[135] = 0.0f;
 		ptr[136] = cb->ox; ptr[137] = cb->oy;          ptr[138] = cb->oz + cb->dz; ptr[139] = 0.0f; ptr[140] = 0.0f; ptr[141] = -1.0f; ptr[142] = 0.0f; ptr[143] = 0.0f;
-		ptr[144] = cb->ox; ptr[145] = cb->oy + cb->dy; ptr[146] = cb->oz + cb->dz; ptr[147] = 1.0f; ptr[148] = 0.0f; ptr[149] = -1.0f; ptr[150] = 0.0f; ptr[151] = 0.0f;
-		ptr[152] = cb->ox; ptr[153] = cb->oy + cb->dy; ptr[154] = cb->oz;          ptr[155] = 1.0f; ptr[156] = 1.0f; ptr[157] = -1.0f; ptr[158] = 0.0f; ptr[159] = 0.0f;
+		ptr[144] = cb->ox; ptr[145] = cb->oy + cb->dy; ptr[146] = cb->oz + cb->dz; ptr[147] = cb->dy; ptr[148] = 0.0f; ptr[149] = -1.0f; ptr[150] = 0.0f; ptr[151] = 0.0f;
+		ptr[152] = cb->ox; ptr[153] = cb->oy + cb->dy; ptr[154] = cb->oz;          ptr[155] = cb->dy; ptr[156] = cb->dz; ptr[157] = -1.0f; ptr[158] = 0.0f; ptr[159] = 0.0f;
 
 		// face 4 indexes
 		iptr[24] = (c * 24) + 16; iptr[25] = (c * 24) + 18; iptr[26] = (c * 24) + 17;
 		iptr[27] = (c * 24) + 16; iptr[28] = (c * 24) + 19; iptr[29] = (c * 24) + 18;
 
 		// face 4 vertices x/y pos z
-		ptr[160] = cb->ox + cb->dx; ptr[161] = cb->oy;          ptr[162] = cb->oz;          ptr[163] = 0.0f; ptr[164] = 1.0f; ptr[165] = 1.0f; ptr[166] = 0.0f; ptr[167] = 0.0f;
+		ptr[160] = cb->ox + cb->dx; ptr[161] = cb->oy;          ptr[162] = cb->oz;          ptr[163] = 0.0f; ptr[164] = cb->dz; ptr[165] = 1.0f; ptr[166] = 0.0f; ptr[167] = 0.0f;
 		ptr[168] = cb->ox + cb->dx; ptr[169] = cb->oy;          ptr[170] = cb->oz + cb->dz; ptr[171] = 0.0f; ptr[172] = 0.0f; ptr[173] = 1.0f; ptr[174] = 0.0f; ptr[175] = 0.0f;
-		ptr[176] = cb->ox + cb->dx; ptr[177] = cb->oy + cb->dy; ptr[178] = cb->oz + cb->dz; ptr[179] = 1.0f; ptr[180] = 0.0f; ptr[181] = 1.0f; ptr[182] = 0.0f; ptr[183] = 0.0f;
-		ptr[184] = cb->ox + cb->dx; ptr[185] = cb->oy + cb->dy; ptr[186] = cb->oz;          ptr[187] = 1.0f; ptr[188] = 1.0f; ptr[189] = 1.0f; ptr[190] = 0.0f; ptr[191] = 0.0f;
+		ptr[176] = cb->ox + cb->dx; ptr[177] = cb->oy + cb->dy; ptr[178] = cb->oz + cb->dz; ptr[179] = cb->dy; ptr[180] = 0.0f; ptr[181] = 1.0f; ptr[182] = 0.0f; ptr[183] = 0.0f;
+		ptr[184] = cb->ox + cb->dx; ptr[185] = cb->oy + cb->dy; ptr[186] = cb->oz;          ptr[187] = cb->dy; ptr[188] = cb->dz; ptr[189] = 1.0f; ptr[190] = 0.0f; ptr[191] = 0.0f;
 
 		// face 4 indexes
 		iptr[30] = (c * 24) + 20; iptr[31] = (c * 24) + 21; iptr[32] = (c * 24) + 22;
@@ -377,28 +376,28 @@ void CreateCubes(unsigned int numCubes, CUBE* cubeList, INDEXED_LIST* lpList)
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, IndexDataSize * sizeof(unsigned int), lpList->Indices, GL_STATIC_DRAW);
 }
 
-CUBE* BuildFloorCubesAndIndexedList(INDEXED_LIST* lpList, unsigned int* nCubes)
-{
-	CUBE* lpCubes = (CUBE*)malloc(20 * 20 * sizeof(CUBE));
-	memset(lpCubes, 0, 20 * 20 * sizeof(CUBE));
-	unsigned int cubeCtr = 0;
-	for (float fx = -50.0f; fx < 50.0f; fx += 5.0f)
-	{
-		for (float fy = -50.0f; fy < 50.0f; fy += 5.0f)
-		{
-			lpCubes[cubeCtr].ox = fx;
-			lpCubes[cubeCtr].oy = -1.0f;
-			lpCubes[cubeCtr].oz = fy;
-			lpCubes[cubeCtr].dx = 5.0f;
-			lpCubes[cubeCtr].dy = 1.0f;
-			lpCubes[cubeCtr].dz = 5.0f;
-			cubeCtr++;
-		}
-	}
-	CreateCubes(20 * 20, lpCubes, lpList);
-	*nCubes = 20 * 20;
-	return lpCubes;
-}
+//CUBE* BuildFloorCubesAndIndexedList(INDEXED_LIST* lpList, unsigned int* nCubes)
+//{
+//	CUBE* lpCubes = (CUBE*)malloc(20 * 20 * sizeof(CUBE));
+//	memset(lpCubes, 0, 20 * 20 * sizeof(CUBE));
+//	unsigned int cubeCtr = 0;
+//	for (float fx = -50.0f; fx < 50.0f; fx += 5.0f)
+//	{
+//		for (float fy = -50.0f; fy < 50.0f; fy += 5.0f)
+//		{
+//			lpCubes[cubeCtr].ox = fx;
+//			lpCubes[cubeCtr].oy = -1.0f;
+//			lpCubes[cubeCtr].oz = fy;
+//			lpCubes[cubeCtr].dx = 5.0f;
+//			lpCubes[cubeCtr].dy = 1.0f;
+//			lpCubes[cubeCtr].dz = 5.0f;
+//			cubeCtr++;
+//		}
+//	}
+//	CreateCubes(20 * 20, lpCubes, lpList);
+//	*nCubes = 20 * 20;
+//	return lpCubes;
+//}
 
 /*
 void SetupGeometryX()
@@ -476,7 +475,7 @@ void SetupGeometryX()
 }
 */
 
-BOOL SetupShaders()
+BOOL SetupShaders(GLCONTEXT* lpGlContext)
 {
 	const char* VertexShaderSource =
 		"#version 400\n"
@@ -517,51 +516,55 @@ BOOL SetupShaders()
 
 	GLint success = 0;
 
-	g_ctx.ShaderProgram = glCreateProgram();
+	lpGlContext->ShaderProgram = glCreateProgram();
 
-	g_ctx.VertexShader = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(g_ctx.VertexShader, 1, &VertexShaderSource, NULL);
-	glCompileShader(g_ctx.VertexShader);
-	glGetShaderiv(g_ctx.VertexShader, GL_COMPILE_STATUS, &success);
+	lpGlContext->VertexShader = glCreateShader(GL_VERTEX_SHADER);
+	glShaderSource(lpGlContext->VertexShader, 1, &VertexShaderSource, NULL);
+	glCompileShader(lpGlContext->VertexShader);
+	glGetShaderiv(lpGlContext->VertexShader, GL_COMPILE_STATUS, &success);
 	if (!success) {
 		cout << "ERROR: Failed to compile vertex shader";
 		return FALSE;
 	}
 
-	g_ctx.FragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(g_ctx.FragmentShader, 1, &FragmentShaderSource, NULL);
-	glCompileShader(g_ctx.FragmentShader);
-	glGetShaderiv(g_ctx.FragmentShader, GL_COMPILE_STATUS, &success);
+	lpGlContext->FragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+	glShaderSource(lpGlContext->FragmentShader, 1, &FragmentShaderSource, NULL);
+	glCompileShader(lpGlContext->FragmentShader);
+	glGetShaderiv(lpGlContext->FragmentShader, GL_COMPILE_STATUS, &success);
 	if (!success) {
 		cout << "ERROR: Failed to compile fragment shader";
 		return FALSE;
 	}
 
-	glAttachShader(g_ctx.ShaderProgram, g_ctx.VertexShader);
-	glAttachShader(g_ctx.ShaderProgram, g_ctx.FragmentShader);
-	glLinkProgram(g_ctx.ShaderProgram);
+	glAttachShader(lpGlContext->ShaderProgram, lpGlContext->VertexShader);
+	glAttachShader(lpGlContext->ShaderProgram, lpGlContext->FragmentShader);
+	glLinkProgram(lpGlContext->ShaderProgram);
 
-	glGetProgramiv(g_ctx.ShaderProgram, GL_LINK_STATUS, &success);
+	glGetProgramiv(lpGlContext->ShaderProgram, GL_LINK_STATUS, &success);
 	if (!success) {
 		cout << "ERROR: Failed to link shader program" << endl;
 		return FALSE;
 	}
 
-	glValidateProgram(g_ctx.ShaderProgram);
-	glGetProgramiv(g_ctx.ShaderProgram, GL_VALIDATE_STATUS, &success);
+	glValidateProgram(lpGlContext->ShaderProgram);
+	glGetProgramiv(lpGlContext->ShaderProgram, GL_VALIDATE_STATUS, &success);
 	if (!success) {
 		cout << "ERROR: Failed to validate shader program" << endl;
 		return FALSE;
 	}
 
-	glUseProgram(g_ctx.ShaderProgram);
+	glUseProgram(lpGlContext->ShaderProgram);
+
+	DumpGlErrors("SetupShaders");
+
 	return TRUE;
 }
 
-void SetupTextures()
+void SetupTextures(GLCONTEXT* lpGlContext)
 {
 
 	UINT iw, ih;
+	const GLsizei numMipMaps = 3;
 
 	Gdiplus::Bitmap *img = Gdiplus::Bitmap::FromFile(L"croxx.png", FALSE);
 	iw = img->GetWidth();
@@ -570,17 +573,24 @@ void SetupTextures()
 	Gdiplus::BitmapData bmpd;
 	img->LockBits(&r, Gdiplus::ImageLockModeRead, img->GetPixelFormat(), &bmpd);
 
-	glGenTextures(1, &g_ctx.TexId);
-	glBindTexture(GL_TEXTURE_2D, g_ctx.TexId);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glGenTextures(1, &lpGlContext->TexId);
+	glBindTexture(GL_TEXTURE_2D, lpGlContext->TexId);
+	glTexStorage2D(GL_TEXTURE_2D, numMipMaps, GL_RGBA8, iw, ih);
+	// 32 bit png
+	//glTexImage2D(GL_TEXTURE_2D, 0, 4, iw, ih, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, bmpd.Scan0);
+	// 24 bit png
+	//glTexImage2D(GL_TEXTURE_2D, 0, 3, iw, ih, 0, GL_RGB, GL_UNSIGNED_BYTE, bmpd.Scan0);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, iw, ih, GL_RGB, GL_UNSIGNED_BYTE, bmpd.Scan0);
+	glGenerateMipmap(GL_TEXTURE_2D);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	//glTexImage2D(GL_TEXTURE_2D, 0, 4, iw, ih, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, bmpd.Scan0);
-	glTexImage2D(GL_TEXTURE_2D, 0, 3, iw, ih, 0, GL_RGB, GL_UNSIGNED_BYTE, bmpd.Scan0);
-	glGenerateMipmap(GL_TEXTURE_2D);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 
 	img->UnlockBits(&bmpd);
+
+	DumpGlErrors("SetupTextures");
+
 	delete img;
 }
 
@@ -840,14 +850,18 @@ DWORD WINAPI RenderThread(void* parm)
 	float FramesPerSecond = 0.0f;
 	float ctsPerFrame = 0.0f; // at 60 fps
 	CUBE fallingCube = { -3.0f, -3.0f, -3.0f, 6.0f, 6.0f, 6.0f, nullptr, nullptr };
-	CUBE* lpFloorCubes = nullptr;
-	unsigned int nFloorCubes = 0;
+	//CUBE* lpFloorCubes = nullptr;
+	//unsigned int nFloorCubes = 0;
 	float prc = 0.0f;
 	CUBE* jsonCubes = nullptr;
 	unsigned int jsonCubeNum = 0;
+	GLCONTEXT lpContext;
 
 	QueryPerformanceFrequency(&perfFreq);
 	ctsPerFrame = (float)perfFreq.QuadPart / 60.0f;
+
+	hdc = GetDC(hWnd);
+	hglrc = InitOpengl(hWnd, hdc);
 
 	// initialize physx
 	if (false == InitializePhysx())
@@ -858,31 +872,31 @@ DWORD WINAPI RenderThread(void* parm)
 		cout << "Physx successfully initialized" << endl;
 	}
 
-	hdc = GetDC(hWnd);
-	hglrc = InitOpengl(hWnd, hdc);
-
 	cout << "Begin render thread" << endl;
 	SetupRenderingContext();
-	lpFloorCubes = BuildFloorCubesAndIndexedList(&g_ctx.idxList[0], &nFloorCubes);
-	for (unsigned int c = 0; c < nFloorCubes; c++) {
-		AddStaticActor(&lpFloorCubes[c]);
-	}
 
-	jsonCubes = LoadGeometryJson("geometry.json", &jsonCubeNum);
-	CreateCubes(jsonCubeNum, jsonCubes, &g_ctx.idxList[2]);
+	memset(&lpContext, 0, sizeof(GLCONTEXT));
+	lpContext.lpIdxList = (INDEXED_LIST*)malloc(2 * sizeof(INDEXED_LIST));
+	memset(lpContext.lpIdxList, 0, 2 * sizeof(INDEXED_LIST));
+	lpContext.NumIdxList = 2;
+
+	cout << "loading geometry file" << endl;
+	jsonCubes = LoadGeometryJson("mz.json", &jsonCubeNum);
+	CreateCubes(jsonCubeNum, jsonCubes, &lpContext.lpIdxList[0]);
 	for (unsigned int c = 0; c < jsonCubeNum; c++) {
 		AddStaticActor(&jsonCubes[c]);
 	}
+	cout << "geometry file stuff done" << endl;
 
-	CreateCubes(1, &fallingCube, &g_ctx.idxList[1]);
+	CreateCubes(1, &fallingCube, &lpContext.lpIdxList[1]);
 	AddDynamicActor(&fallingCube, physx::PxVec3(0, 40, 0));
-	SetupShaders();
-	SetupTextures();
+	SetupShaders(&lpContext);
+	SetupTextures(&lpContext);
 
 	//gWorldMatrixLoc = glGetUniformLocation(g_ctx.ShaderProgram, "gWorld");
-	gModelMatrixLoc = glGetUniformLocation(g_ctx.ShaderProgram, "gModelMatrix");
-	gViewMatrixLoc = glGetUniformLocation(g_ctx.ShaderProgram, "gViewMatrix");
-	gProjMatrixLoc = glGetUniformLocation(g_ctx.ShaderProgram, "gProjMatrix");
+	gModelMatrixLoc = glGetUniformLocation(lpContext.ShaderProgram, "gModelMatrix");
+	gViewMatrixLoc = glGetUniformLocation(lpContext.ShaderProgram, "gViewMatrix");
+	gProjMatrixLoc = glGetUniformLocation(lpContext.ShaderProgram, "gProjMatrix");
 
 	GetClientRect(hWnd, &clientRect);
 	glm::mat4 proj = glm::perspective(45.0f,
@@ -892,8 +906,8 @@ DWORD WINAPI RenderThread(void* parm)
 
 	glViewport(0, 0, clientRect.right - clientRect.left, clientRect.bottom - clientRect.top);
 
-	gLookDirVecLoc = glGetUniformLocation(g_ctx.ShaderProgram, "gLookDirVec");
-	gTextureLoc = glGetUniformLocation(g_ctx.ShaderProgram, "texSampler");
+	gLookDirVecLoc = glGetUniformLocation(lpContext.ShaderProgram, "gLookDirVec");
+	gTextureLoc = glGetUniformLocation(lpContext.ShaderProgram, "texSampler");
 	glUniform1i(gTextureLoc, 0);
 
 	while (TRUE) {
@@ -949,30 +963,30 @@ DWORD WINAPI RenderThread(void* parm)
 
 			// set the active texture
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, g_ctx.TexId);
+			glBindTexture(GL_TEXTURE_2D, lpContext.TexId);
 
 			// BEGIN draw the floor
-			glBindBuffer(GL_ARRAY_BUFFER, g_ctx.idxList[0].VertexArrayBuffer);
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ctx.idxList[0].IndexArrayBuffer);
+			//glBindBuffer(GL_ARRAY_BUFFER, g_ctx.idxList[0].VertexArrayBuffer);
+			//glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ctx.idxList[0].IndexArrayBuffer);
 
-			glEnableVertexAttribArray(0);
-			glEnableVertexAttribArray(1);
-			glEnableVertexAttribArray(2);
+			//glEnableVertexAttribArray(0);
+			//glEnableVertexAttribArray(1);
+			//glEnableVertexAttribArray(2);
 
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), 0);
-			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-			glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(5 * sizeof(float)));
+			//glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), 0);
+			//glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+			//glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(5 * sizeof(float)));
 
-			glDrawElements(GL_TRIANGLES, g_ctx.idxList[0].NumIndices, GL_UNSIGNED_INT, 0);
+			//glDrawElements(GL_TRIANGLES, g_ctx.idxList[0].NumIndices, GL_UNSIGNED_INT, 0);
 
-			glDisableVertexAttribArray(0);
-			glDisableVertexAttribArray(1);
-			glDisableVertexAttribArray(2);
+			//glDisableVertexAttribArray(0);
+			//glDisableVertexAttribArray(1);
+			//glDisableVertexAttribArray(2);
 			// END draw the floor
 
 			// BEGIN draw the json cubes
-			glBindBuffer(GL_ARRAY_BUFFER, g_ctx.idxList[2].VertexArrayBuffer);
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ctx.idxList[2].IndexArrayBuffer);
+			glBindBuffer(GL_ARRAY_BUFFER, lpContext.lpIdxList[0].VertexArrayBuffer);
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, lpContext.lpIdxList[0].IndexArrayBuffer);
 
 			glEnableVertexAttribArray(0);
 			glEnableVertexAttribArray(1);
@@ -982,7 +996,7 @@ DWORD WINAPI RenderThread(void* parm)
 			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
 			glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(5 * sizeof(float)));
 
-			glDrawElements(GL_TRIANGLES, g_ctx.idxList[2].NumIndices, GL_UNSIGNED_INT, 0);
+			glDrawElements(GL_TRIANGLES, lpContext.lpIdxList[0].NumIndices, GL_UNSIGNED_INT, 0);
 
 			glDisableVertexAttribArray(0);
 			glDisableVertexAttribArray(1);
@@ -992,8 +1006,8 @@ DWORD WINAPI RenderThread(void* parm)
 			// BEGIN draw the falling block
 			glUniformMatrix4fv(gModelMatrixLoc, 1, GL_FALSE, &blockPose[0][0]);
 
-			glBindBuffer(GL_ARRAY_BUFFER, g_ctx.idxList[1].VertexArrayBuffer);
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ctx.idxList[1].IndexArrayBuffer);
+			glBindBuffer(GL_ARRAY_BUFFER, lpContext.lpIdxList[1].VertexArrayBuffer);
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, lpContext.lpIdxList[1].IndexArrayBuffer);
 
 			glEnableVertexAttribArray(0);
 			glEnableVertexAttribArray(1);
@@ -1003,7 +1017,7 @@ DWORD WINAPI RenderThread(void* parm)
 			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
 			glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(5 * sizeof(float)));
 
-			glDrawElements(GL_TRIANGLES, g_ctx.idxList[1].NumIndices, GL_UNSIGNED_INT, 0);
+			glDrawElements(GL_TRIANGLES, lpContext.lpIdxList[1].NumIndices, GL_UNSIGNED_INT, 0);
 
 			glDisableVertexAttribArray(0);
 			glDisableVertexAttribArray(1);
@@ -1033,23 +1047,16 @@ DWORD WINAPI RenderThread(void* parm)
 		if (msToWait > 0) Sleep((DWORD)msToWait);
 	}
 
-	glDeleteShader(g_ctx.VertexShader);
-	glDeleteShader(g_ctx.FragmentShader);
-	glDeleteProgram(g_ctx.ShaderProgram);
-	glDeleteBuffers(1, &g_ctx.idxList[0].VertexArrayBuffer);
-	glDeleteBuffers(1, &g_ctx.idxList[0].IndexArrayBuffer);
-	glDeleteBuffers(1, &g_ctx.idxList[1].VertexArrayBuffer);
-	glDeleteBuffers(1, &g_ctx.idxList[1].IndexArrayBuffer);
-	glDeleteBuffers(1, &g_ctx.idxList[2].VertexArrayBuffer);
-	glDeleteBuffers(1, &g_ctx.idxList[2].IndexArrayBuffer);
-	glDeleteTextures(1, &g_ctx.TexId);
-
-	free(g_ctx.idxList[0].Vertices);
-	free(g_ctx.idxList[1].Vertices);
-	free(g_ctx.idxList[2].Vertices);
-	free(g_ctx.idxList[0].Indices);
-	free(g_ctx.idxList[1].Indices);
-	free(g_ctx.idxList[2].Indices);
+	glDeleteShader(lpContext.VertexShader);
+	glDeleteShader(lpContext.FragmentShader);
+	glDeleteProgram(lpContext.ShaderProgram);
+	glDeleteTextures(1, &lpContext.TexId);
+	for (unsigned int i = 0; i < lpContext.NumIdxList; i++) {
+		glDeleteBuffers(1, &lpContext.lpIdxList[i].VertexArrayBuffer);
+		glDeleteBuffers(1, &lpContext.lpIdxList[i].IndexArrayBuffer);
+		free(lpContext.lpIdxList[i].Vertices);
+		free(lpContext.lpIdxList[i].Indices);
+	}
 
 	if (hglrc) {
 		wglMakeCurrent(hdc, nullptr);
@@ -1064,9 +1071,11 @@ DWORD WINAPI RenderThread(void* parm)
 		}
 		free(jsonCubes);
 	}
-	for (unsigned int c = 0; c < nFloorCubes; c++) {
-		ReleaseStaticActorCube(&lpFloorCubes[c]);
-	}
+
+	//for (unsigned int c = 0; c < nFloorCubes; c++) {
+		//ReleaseStaticActorCube(&lpFloorCubes[c]);
+	//}
+
 	ReleaseDynamicActorCube(&fallingCube);
 
 	DisposePhysx();
