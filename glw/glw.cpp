@@ -304,10 +304,10 @@ void CreateCubes(unsigned int numCubes, CUBE* cubeList, INDEXED_LIST* lpList)
 
 		// face 1 vertices x/y neg z
 		// pos x,y,z		                                                    tex u,v		                     norm i,j,k
-		ptr[0] = cb->ox;           ptr[1] = cb->oy;           ptr[2] = cb->oz;  ptr[3] = 0.0f;  ptr[4] = cb->dy;   ptr[5] = 0.0f;  ptr[6] = 0.0f;  ptr[7] = 1.0f;
-		ptr[8] = cb->ox;           ptr[9] = cb->oy + cb->dy;  ptr[10] = cb->oz; ptr[11] = 0.0f; ptr[12] = 0.0f;  ptr[13] = 0.0f; ptr[14] = 0.0f; ptr[15] = 1.0f;
-		ptr[16] = cb->ox + cb->dx; ptr[17] = cb->oy + cb->dy; ptr[18] = cb->oz; ptr[19] = cb->dx; ptr[20] = 0.0f;  ptr[21] = 0.0f; ptr[22] = 0.0f; ptr[23] = 1.0f;
-		ptr[24] = cb->ox + cb->dx; ptr[25] = cb->oy;          ptr[26] = cb->oz; ptr[27] = cb->dx; ptr[28] = cb->dy;  ptr[29] = 0.0f; ptr[30] = 0.0f; ptr[31] = 1.0f;
+		ptr[0] = cb->ox;           ptr[1] = cb->oy;           ptr[2] = cb->oz;  ptr[3] = 0.0f;  ptr[4] = cb->dy;   ptr[5] = 0.0f;  ptr[6] = 0.0f;  ptr[7] = -1.0f;
+		ptr[8] = cb->ox;           ptr[9] = cb->oy + cb->dy;  ptr[10] = cb->oz; ptr[11] = 0.0f; ptr[12] = 0.0f;  ptr[13] = 0.0f; ptr[14] = 0.0f; ptr[15] = -1.0f;
+		ptr[16] = cb->ox + cb->dx; ptr[17] = cb->oy + cb->dy; ptr[18] = cb->oz; ptr[19] = cb->dx; ptr[20] = 0.0f;  ptr[21] = 0.0f; ptr[22] = 0.0f; ptr[23] = -1.0f;
+		ptr[24] = cb->ox + cb->dx; ptr[25] = cb->oy;          ptr[26] = cb->oz; ptr[27] = cb->dx; ptr[28] = cb->dy;  ptr[29] = 0.0f; ptr[30] = 0.0f; ptr[31] = -1.0f;
 
 		// face 1 indexes
 		iptr[0] = (c * 24) + 0; iptr[1] = (c * 24) + 2; iptr[2] = (c * 24) + 1;
@@ -315,29 +315,29 @@ void CreateCubes(unsigned int numCubes, CUBE* cubeList, INDEXED_LIST* lpList)
 
 		// face 2 vertices x/y pos z
 		// pos x,y,z
-		ptr[32] = cb->ox;          ptr[33] = cb->oy;          ptr[34] = cb->oz + cb->dz; ptr[35] = 0.0f; ptr[36] = cb->dy; ptr[37] = 0.0f; ptr[38] = 0.0f; ptr[39] = -1.0f;
-		ptr[40] = cb->ox;          ptr[41] = cb->oy + cb->dy; ptr[42] = cb->oz + cb->dz; ptr[43] = 0.0f; ptr[44] = 0.0f; ptr[45] = 0.0f; ptr[46] = 0.0f; ptr[47] = -1.0f;
-		ptr[48] = cb->ox + cb->dx; ptr[49] = cb->oy + cb->dy; ptr[50] = cb->oz + cb->dz; ptr[51] = cb->dx; ptr[52] = 0.0f; ptr[53] = 0.0f; ptr[54] = 0.0f; ptr[55] = -1.0f;
-		ptr[56] = cb->ox + cb->dx; ptr[57] = cb->oy;          ptr[58] = cb->oz + cb->dz; ptr[59] = cb->dx; ptr[60] = cb->dy; ptr[61] = 0.0f; ptr[62] = 0.0f; ptr[63] = -1.0f;
+		ptr[32] = cb->ox;          ptr[33] = cb->oy;          ptr[34] = cb->oz + cb->dz; ptr[35] = 0.0f; ptr[36] = cb->dy; ptr[37] = 0.0f; ptr[38] = 0.0f; ptr[39] = 1.0f;
+		ptr[40] = cb->ox;          ptr[41] = cb->oy + cb->dy; ptr[42] = cb->oz + cb->dz; ptr[43] = 0.0f; ptr[44] = 0.0f; ptr[45] = 0.0f; ptr[46] = 0.0f; ptr[47] = 1.0f;
+		ptr[48] = cb->ox + cb->dx; ptr[49] = cb->oy + cb->dy; ptr[50] = cb->oz + cb->dz; ptr[51] = cb->dx; ptr[52] = 0.0f; ptr[53] = 0.0f; ptr[54] = 0.0f; ptr[55] = 1.0f;
+		ptr[56] = cb->ox + cb->dx; ptr[57] = cb->oy;          ptr[58] = cb->oz + cb->dz; ptr[59] = cb->dx; ptr[60] = cb->dy; ptr[61] = 0.0f; ptr[62] = 0.0f; ptr[63] = 1.0f;
 
 		iptr[6] = (c * 24) + 4; iptr[7] = (c * 24) + 5; iptr[8] = (c * 24) + 6;
 		iptr[9] = (c * 24) + 4; iptr[10] = (c * 24) + 6; iptr[11] = (c * 24) + 7;
 
 		// face 3 vertices x/y pos z
-		ptr[64] = cb->ox;          ptr[65] = cb->oy; ptr[66] = cb->oz;          ptr[67] = 0.0f; ptr[68] = cb->dz; ptr[69] = 0.0f; ptr[70] = 1.0f; ptr[71] = 0.0f;
-		ptr[72] = cb->ox;          ptr[73] = cb->oy; ptr[74] = cb->oz + cb->dz; ptr[75] = 0.0f; ptr[76] = 0.0f; ptr[77] = 0.0f; ptr[78] = 1.0f; ptr[79] = 0.0f;
-		ptr[80] = cb->ox + cb->dx; ptr[81] = cb->oy; ptr[82] = cb->oz + cb->dz; ptr[83] = cb->dx; ptr[84] = 0.0f; ptr[85] = 0.0f; ptr[86] = 1.0f; ptr[87] = 0.0f;
-		ptr[88] = cb->ox + cb->dx; ptr[89] = cb->oy; ptr[90] = cb->oz;          ptr[91] = cb->dx; ptr[92] = cb->dz; ptr[93] = 0.0f; ptr[94] = 1.0f; ptr[95] = 0.0f;
+		ptr[64] = cb->ox;          ptr[65] = cb->oy; ptr[66] = cb->oz;          ptr[67] = 0.0f; ptr[68] = cb->dz; ptr[69] = 0.0f; ptr[70] = -1.0f; ptr[71] = 0.0f;
+		ptr[72] = cb->ox;          ptr[73] = cb->oy; ptr[74] = cb->oz + cb->dz; ptr[75] = 0.0f; ptr[76] = 0.0f; ptr[77] = 0.0f; ptr[78] = -1.0f; ptr[79] = 0.0f;
+		ptr[80] = cb->ox + cb->dx; ptr[81] = cb->oy; ptr[82] = cb->oz + cb->dz; ptr[83] = cb->dx; ptr[84] = 0.0f; ptr[85] = 0.0f; ptr[86] = -1.0f; ptr[87] = 0.0f;
+		ptr[88] = cb->ox + cb->dx; ptr[89] = cb->oy; ptr[90] = cb->oz;          ptr[91] = cb->dx; ptr[92] = cb->dz; ptr[93] = 0.0f; ptr[94] = -1.0f; ptr[95] = 0.0f;
 
 		// face 3 indexes
 		iptr[12] = (c * 24) + 8; iptr[13] = (c * 24) + 9; iptr[14] = (c * 24) + 10;
 		iptr[15] = (c * 24) + 8; iptr[16] = (c * 24) + 10; iptr[17] = (c * 24) + 11;
 
 		// face 4 vertices x/y pos z
-		ptr[96] = cb->ox;           ptr[97] = cb->oy + cb->dy;  ptr[98] = cb->oz;           ptr[99] = 0.0f;  ptr[100] = cb->dz; ptr[101] = 0.0f; ptr[102] = -1.0f; ptr[103] = 0.0f;
-		ptr[104] = cb->ox;          ptr[105] = cb->oy + cb->dy; ptr[106] = cb->oz + cb->dz; ptr[107] = 0.0f; ptr[108] = 0.0f; ptr[109] = 0.0f; ptr[110] = -1.0f; ptr[111] = 0.0f;
-		ptr[112] = cb->ox + cb->dx; ptr[113] = cb->oy + cb->dy; ptr[114] = cb->oz + cb->dz; ptr[115] = cb->dx; ptr[116] = 0.0f; ptr[117] = 0.0f; ptr[118] = -1.0f; ptr[119] = 0.0f;
-		ptr[120] = cb->ox + cb->dx; ptr[121] = cb->oy + cb->dy; ptr[122] = cb->oz;          ptr[123] = cb->dx; ptr[124] = cb->dz; ptr[125] = 0.0f; ptr[126] = -1.0f; ptr[127] = 0.0f;
+		ptr[96] = cb->ox;           ptr[97] = cb->oy + cb->dy;  ptr[98] = cb->oz;           ptr[99] = 0.0f;  ptr[100] = cb->dz; ptr[101] = 0.0f; ptr[102] = 1.0f; ptr[103] = 0.0f;
+		ptr[104] = cb->ox;          ptr[105] = cb->oy + cb->dy; ptr[106] = cb->oz + cb->dz; ptr[107] = 0.0f; ptr[108] = 0.0f; ptr[109] = 0.0f; ptr[110] = 1.0f; ptr[111] = 0.0f;
+		ptr[112] = cb->ox + cb->dx; ptr[113] = cb->oy + cb->dy; ptr[114] = cb->oz + cb->dz; ptr[115] = cb->dx; ptr[116] = 0.0f; ptr[117] = 0.0f; ptr[118] = 1.0f; ptr[119] = 0.0f;
+		ptr[120] = cb->ox + cb->dx; ptr[121] = cb->oy + cb->dy; ptr[122] = cb->oz;          ptr[123] = cb->dx; ptr[124] = cb->dz; ptr[125] = 0.0f; ptr[126] = 1.0f; ptr[127] = 0.0f;
 
 		// face 4 indexes
 		iptr[18] = (c * 24) + 12; iptr[19] = (c * 24) + 14; iptr[20] = (c * 24) + 13;
@@ -487,31 +487,63 @@ BOOL SetupShaders(GLCONTEXT* lpGlContext)
 		"uniform mat4 gModelMatrix;"
 		"uniform mat4 gViewMatrix;"
 		"uniform mat4 gProjMatrix;"
-		"uniform vec3 gLookDirVec;"
-		"out vec2 vUV;"
-		"out float vCLR;"
-		//"out vec4 vVertexColor;"
+		//"uniform vec3 gLookDirVec;"
+		//"out vec2 vUV;"
+		//"out float vCLR;"
+		"out vec3 fragVert;"
+		"out vec2 fragTexCoord;"
+		"out vec3 fragNormal;"
+		""
+	//"out vec4 vVertexColor;"
 		"void main() {"
 		"  vec4 modelPos = gModelMatrix * vec4(vPosition, 1.0);"
 		"  vec4 viewPos = gViewMatrix * modelPos;"
 		"  gl_Position = gProjMatrix * viewPos;"
-		"  vec3 normgLookDirVec = normalize(gLookDirVec);"
+		//"  vec3 normgLookDirVec = normalize(gLookDirVec);"
 		// if norm and look are facing each other, result will be negative
 		// need to invert this to provide positive reflection
-		"  vCLR = (clamp(dot(vNormal, normgLookDirVec) * -1.0,0.0,1.0) * 0.8) + 0.2;"
-		"  vUV = vTexCoord;"
+		//"  vCLR = (clamp(dot(vNormal, normgLookDirVec) * -1.0,0.0,1.0) * 0.8) + 0.2;"
+		//"  vUV = vTexCoord;"
 		//"  vVertexColor = vColor;"
+		"  fragTexCoord = vTexCoord;"
+		"  fragNormal = vNormal;"
+		"  fragVert = vPosition;"
 		"}";
+
 	const char* FragmentShaderSource =
 		"#version 400\n"
+		"uniform mat4 gModelMatrix;"
+		"uniform vec3 gPlayerPos;"
 		"out vec4 frag_color;"
-		"in vec2 vUV;"
-		"in float vCLR;"
+		//"in vec2 vUV;"
+		//"in float vCLR;"
 		"uniform sampler2D texSampler;"
-		"in vec4 vVertexColor;"
+		//"in vec4 vVertexColor;"
+
+		"in vec2 fragTexCoord;"
+		"in vec3 fragNormal;"
+		"in vec3 fragVert;"
 		"void main() {"
-		"  frag_color = texture2D(texSampler, vUV.xy) * vCLR;"
+		//"  frag_color = texture2D(texSampler, vUV.xy) * vCLR;"
 		//"  frag_color = texture2D(texSampler, vUV.xy) * vVertexColor;"
+
+		//calculate normal in world coordinates
+		"  mat3 normalMatrix = transpose(inverse(mat3(gModelMatrix)));"
+		"  vec3 normal = normalize(normalMatrix * fragNormal);"
+		//calculate the location of this fragment (pixel) in world coordinates
+		"  vec3 fragPosition = vec3(gModelMatrix * vec4(fragVert, 1));"
+		//calculate the vector from this pixels surface to the light source
+		"  vec3 surfaceToLight = gPlayerPos - fragPosition;"
+		//calculate the cosine of the angle of incidence
+		"  float brightness = dot(normal, surfaceToLight) / (length(surfaceToLight) * length(normal));"
+		"  brightness = clamp(brightness, 0, 1);"
+		//calculate final color of the pixel, based on:
+		// 1. The angle of incidence: brightness
+		// 2. The color/intensities of the light: light.intensities
+		// 3. The texture and texture coord: texture(tex, fragTexCoord)
+		//"  vec4 surfaceColor = texture(tex, fragTexCoord);"
+		"  vec4 surfaceColor = texture2D(texSampler, fragTexCoord.xy);"
+		"  frag_color = vec4(brightness * vec3(1,1,1) * surfaceColor.rgb, surfaceColor.a);"
 		"}";
 
 	GLint success = 0;
@@ -841,7 +873,8 @@ DWORD WINAPI RenderThread(void* parm)
 	GLuint gModelMatrixLoc = 0;
 	GLuint gViewMatrixLoc = 0;
 	GLuint gProjMatrixLoc = 0;
-	GLuint gLookDirVecLoc = 0;
+	GLuint gPlayerPosLoc = 0;
+	//GLuint gLookDirVecLoc = 0;
 	GLuint gTextureLoc = 0;
 	LARGE_INTEGER perfFreq = { 0 };
 	LARGE_INTEGER perfCount = { 0 };
@@ -897,6 +930,7 @@ DWORD WINAPI RenderThread(void* parm)
 	gModelMatrixLoc = glGetUniformLocation(lpContext.ShaderProgram, "gModelMatrix");
 	gViewMatrixLoc = glGetUniformLocation(lpContext.ShaderProgram, "gViewMatrix");
 	gProjMatrixLoc = glGetUniformLocation(lpContext.ShaderProgram, "gProjMatrix");
+	gPlayerPosLoc = glGetUniformLocation(lpContext.ShaderProgram, "gPlayerPos");
 
 	GetClientRect(hWnd, &clientRect);
 	glm::mat4 proj = glm::perspective(45.0f,
@@ -906,7 +940,7 @@ DWORD WINAPI RenderThread(void* parm)
 
 	glViewport(0, 0, clientRect.right - clientRect.left, clientRect.bottom - clientRect.top);
 
-	gLookDirVecLoc = glGetUniformLocation(lpContext.ShaderProgram, "gLookDirVec");
+	//gLookDirVecLoc = glGetUniformLocation(lpContext.ShaderProgram, "gLookDirVec");
 	gTextureLoc = glGetUniformLocation(lpContext.ShaderProgram, "texSampler");
 	glUniform1i(gTextureLoc, 0);
 
@@ -943,11 +977,14 @@ DWORD WINAPI RenderThread(void* parm)
 			g_ey = (float)ppos.y;
 			g_ez = (float)ppos.z;
 
+			glm::vec3 playerPos(g_ex, g_ey, g_ez);
+			glUniform3fv(gPlayerPosLoc, 1, &playerPos[0]);
+
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 			// for lighting
-			glm::vec3 lookDirVec(sinf(DEG2RAD(g_az)), sinf(DEG2RAD(g_el)), cosf(DEG2RAD(g_az)));
-			glUniform3fv(gLookDirVecLoc, 1, &lookDirVec[0]);
+			//glm::vec3 lookDirVec(sinf(DEG2RAD(g_az)), sinf(DEG2RAD(g_el)), cosf(DEG2RAD(g_az)));
+			//glUniform3fv(gLookDirVecLoc, 1, &lookDirVec[0]);
 
 			// projection matrix
 			glm::mat4 r1 = glm::rotate(DEG2RAD(g_az), glm::vec3(0.0f, 1.0f, 0.0f));
