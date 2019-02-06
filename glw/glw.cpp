@@ -46,10 +46,15 @@ typedef struct {
 } INDEXED_LIST;
 
 typedef struct {
-	GLuint TexId;
 	GLuint VertexShader;
 	GLuint FragmentShader;
 	GLuint ShaderProgram;
+} SHADER_PROGRAM_CONTEXT;
+
+typedef struct {
+	SHADER_PROGRAM_CONTEXT world;
+	SHADER_PROGRAM_CONTEXT screen;
+	GLuint TexId;
 	INDEXED_LIST* lpIdxList;
 	GLuint NumIdxList;
 } GLCONTEXT;
@@ -109,6 +114,90 @@ PFNGLDELETEBUFFERSPROC glDeleteBuffers;
 PFNGLDELETEPROGRAMPROC glDeleteProgram;
 PFNGLDELETESHADERPROC glDeleteShader;
 PFNGLTEXSTORAGE2DPROC glTexStorage2D;
+PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
+
+const char* g_VertexShaderSource =
+"#version 400\n"
+"layout(location = 0) in vec3 vPosition;"
+"layout(location = 1) in vec2 vTexCoord;"
+"layout(location = 2) in vec3 vNormal;"
+//"layout(location = 3) in vec4 vColor;"
+//"uniform mat4 gWorld;"
+"uniform mat4 gModelMatrix;"
+"uniform mat4 gViewMatrix;"
+"uniform mat4 gProjMatrix;"
+//"uniform vec3 gLookDirVec;"
+//"out vec2 vUV;"
+//"out float vCLR;"
+"out vec3 fragVert;"
+"out vec2 fragTexCoord;"
+"out vec3 fragNormal;"
+""
+//"out vec4 vVertexColor;"
+"void main() {"
+"  vec4 modelPos = gModelMatrix * vec4(vPosition, 1.0);"
+"  vec4 viewPos = gViewMatrix * modelPos;"
+"  gl_Position = gProjMatrix * viewPos;"
+//"  vec3 normgLookDirVec = normalize(gLookDirVec);"
+// if norm and look are facing each other, result will be negative
+// need to invert this to provide positive reflection
+//"  vCLR = (clamp(dot(vNormal, normgLookDirVec) * -1.0,0.0,1.0) * 0.8) + 0.2;"
+//"  vUV = vTexCoord;"
+//"  vVertexColor = vColor;"
+"  fragTexCoord = vTexCoord;"
+"  fragNormal = vNormal;"
+"  fragVert = vPosition;"
+"}";
+
+const char* g_FragmentShaderSource =
+"#version 400\n"
+"uniform mat4 gModelMatrix;"
+"uniform vec3 gPlayerPos;"
+"out vec4 frag_color;"
+//"in vec2 vUV;"
+//"in float vCLR;"
+"uniform sampler2D texSampler;"
+//"in vec4 vVertexColor;"
+
+"in vec2 fragTexCoord;"
+"in vec3 fragNormal;"
+"in vec3 fragVert;"
+"void main() {"
+//"  frag_color = texture2D(texSampler, vUV.xy) * vCLR;"
+//"  frag_color = texture2D(texSampler, vUV.xy) * vVertexColor;"
+
+//calculate normal in world coordinates
+"  mat3 normalMatrix = transpose(inverse(mat3(gModelMatrix)));"
+"  vec3 normal = normalize(normalMatrix * fragNormal);"
+//calculate the location of this fragment (pixel) in world coordinates
+"  vec3 fragPosition = vec3(gModelMatrix * vec4(fragVert, 1));"
+//calculate the vector from this pixels surface to the light source
+"  vec3 surfaceToLight = gPlayerPos - fragPosition;"
+//calculate the cosine of the angle of incidence
+"  float brightness = dot(normal, surfaceToLight) / (length(surfaceToLight) * length(normal));"
+"  brightness = clamp(brightness, 0, 1);"
+//calculate final color of the pixel, based on:
+// 1. The angle of incidence: brightness
+// 2. The color/intensities of the light: light.intensities
+// 3. The texture and texture coord: texture(tex, fragTexCoord)
+//"  vec4 surfaceColor = texture(tex, fragTexCoord);"
+"  vec4 surfaceColor = texture2D(texSampler, fragTexCoord.xy);"
+"  frag_color = vec4(brightness * vec3(1,1,1) * surfaceColor.rgb, surfaceColor.a);"
+"}";
+
+const char* g_VtxShaderScreen = "#version 150\n"
+"in vec2 position;"
+"void main()"
+"{"
+"  gl_Position = vec4(position, 0.0, 1.0);"
+"}";
+
+const char* g_FrgShaderScreen = "#version 150\n"
+"out vec4 outColor;"
+"void main()"
+"{"
+"  outColor = vec4(1.0, 1.0, 1.0, 1.0);"
+"}";
 
 class MyAllocator : public physx::PxAllocatorCallback
 {
@@ -219,6 +308,7 @@ void GetGlFuncs()
 	glDeleteShader = (PFNGLDELETESHADERPROC)wglGetProcAddress("glDeleteShader");
 	glUniform3fv = (PFNGLUNIFORM3FVPROC)wglGetProcAddress("glUniform3fv");
 	glTexStorage2D = (PFNGLTEXSTORAGE2DPROC)wglGetProcAddress("glTexStorage2D");
+	glGetAttribLocation = (PFNGLGETATTRIBLOCATIONPROC)wglGetProcAddress("glGetAttribLocation");
 }
 
 void SetupRenderingContext()
@@ -490,117 +580,48 @@ void SetupGeometryX()
 }
 */
 
-BOOL SetupShaders(GLCONTEXT* lpGlContext)
+BOOL SetupShaders(SHADER_PROGRAM_CONTEXT *sctx, const char* vtxss, const char* frgss)
 {
-	const char* VertexShaderSource =
-		"#version 400\n"
-		"layout(location = 0) in vec3 vPosition;"
-		"layout(location = 1) in vec2 vTexCoord;"
-		"layout(location = 2) in vec3 vNormal;"
-		//"layout(location = 3) in vec4 vColor;"
-		//"uniform mat4 gWorld;"
-		"uniform mat4 gModelMatrix;"
-		"uniform mat4 gViewMatrix;"
-		"uniform mat4 gProjMatrix;"
-		//"uniform vec3 gLookDirVec;"
-		//"out vec2 vUV;"
-		//"out float vCLR;"
-		"out vec3 fragVert;"
-		"out vec2 fragTexCoord;"
-		"out vec3 fragNormal;"
-		""
-	//"out vec4 vVertexColor;"
-		"void main() {"
-		"  vec4 modelPos = gModelMatrix * vec4(vPosition, 1.0);"
-		"  vec4 viewPos = gViewMatrix * modelPos;"
-		"  gl_Position = gProjMatrix * viewPos;"
-		//"  vec3 normgLookDirVec = normalize(gLookDirVec);"
-		// if norm and look are facing each other, result will be negative
-		// need to invert this to provide positive reflection
-		//"  vCLR = (clamp(dot(vNormal, normgLookDirVec) * -1.0,0.0,1.0) * 0.8) + 0.2;"
-		//"  vUV = vTexCoord;"
-		//"  vVertexColor = vColor;"
-		"  fragTexCoord = vTexCoord;"
-		"  fragNormal = vNormal;"
-		"  fragVert = vPosition;"
-		"}";
-
-	const char* FragmentShaderSource =
-		"#version 400\n"
-		"uniform mat4 gModelMatrix;"
-		"uniform vec3 gPlayerPos;"
-		"out vec4 frag_color;"
-		//"in vec2 vUV;"
-		//"in float vCLR;"
-		"uniform sampler2D texSampler;"
-		//"in vec4 vVertexColor;"
-
-		"in vec2 fragTexCoord;"
-		"in vec3 fragNormal;"
-		"in vec3 fragVert;"
-		"void main() {"
-		//"  frag_color = texture2D(texSampler, vUV.xy) * vCLR;"
-		//"  frag_color = texture2D(texSampler, vUV.xy) * vVertexColor;"
-
-		//calculate normal in world coordinates
-		"  mat3 normalMatrix = transpose(inverse(mat3(gModelMatrix)));"
-		"  vec3 normal = normalize(normalMatrix * fragNormal);"
-		//calculate the location of this fragment (pixel) in world coordinates
-		"  vec3 fragPosition = vec3(gModelMatrix * vec4(fragVert, 1));"
-		//calculate the vector from this pixels surface to the light source
-		"  vec3 surfaceToLight = gPlayerPos - fragPosition;"
-		//calculate the cosine of the angle of incidence
-		"  float brightness = dot(normal, surfaceToLight) / (length(surfaceToLight) * length(normal));"
-		"  brightness = clamp(brightness, 0, 1);"
-		//calculate final color of the pixel, based on:
-		// 1. The angle of incidence: brightness
-		// 2. The color/intensities of the light: light.intensities
-		// 3. The texture and texture coord: texture(tex, fragTexCoord)
-		//"  vec4 surfaceColor = texture(tex, fragTexCoord);"
-		"  vec4 surfaceColor = texture2D(texSampler, fragTexCoord.xy);"
-		"  frag_color = vec4(brightness * vec3(1,1,1) * surfaceColor.rgb, surfaceColor.a);"
-		"}";
-
 	GLint success = 0;
 
-	lpGlContext->ShaderProgram = glCreateProgram();
+	sctx->ShaderProgram = glCreateProgram();
 
-	lpGlContext->VertexShader = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(lpGlContext->VertexShader, 1, &VertexShaderSource, NULL);
-	glCompileShader(lpGlContext->VertexShader);
-	glGetShaderiv(lpGlContext->VertexShader, GL_COMPILE_STATUS, &success);
+	sctx->VertexShader = glCreateShader(GL_VERTEX_SHADER);
+	glShaderSource(sctx->VertexShader, 1, &vtxss, NULL);
+	glCompileShader(sctx->VertexShader);
+	glGetShaderiv(sctx->VertexShader, GL_COMPILE_STATUS, &success);
 	if (!success) {
 		cout << "ERROR: Failed to compile vertex shader";
 		return FALSE;
 	}
 
-	lpGlContext->FragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(lpGlContext->FragmentShader, 1, &FragmentShaderSource, NULL);
-	glCompileShader(lpGlContext->FragmentShader);
-	glGetShaderiv(lpGlContext->FragmentShader, GL_COMPILE_STATUS, &success);
+	sctx->FragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+	glShaderSource(sctx->FragmentShader, 1, &frgss, NULL);
+	glCompileShader(sctx->FragmentShader);
+	glGetShaderiv(sctx->FragmentShader, GL_COMPILE_STATUS, &success);
 	if (!success) {
 		cout << "ERROR: Failed to compile fragment shader";
 		return FALSE;
 	}
 
-	glAttachShader(lpGlContext->ShaderProgram, lpGlContext->VertexShader);
-	glAttachShader(lpGlContext->ShaderProgram, lpGlContext->FragmentShader);
-	glLinkProgram(lpGlContext->ShaderProgram);
+	glAttachShader(sctx->ShaderProgram, sctx->VertexShader);
+	glAttachShader(sctx->ShaderProgram, sctx->FragmentShader);
+	glLinkProgram(sctx->ShaderProgram);
 
-	glGetProgramiv(lpGlContext->ShaderProgram, GL_LINK_STATUS, &success);
+	glGetProgramiv(sctx->ShaderProgram, GL_LINK_STATUS, &success);
 	if (!success) {
 		cout << "ERROR: Failed to link shader program" << endl;
 		return FALSE;
 	}
 
-	glValidateProgram(lpGlContext->ShaderProgram);
-	glGetProgramiv(lpGlContext->ShaderProgram, GL_VALIDATE_STATUS, &success);
+	glValidateProgram(sctx->ShaderProgram);
+	glGetProgramiv(sctx->ShaderProgram, GL_VALIDATE_STATUS, &success);
 	if (!success) {
 		cout << "ERROR: Failed to validate shader program" << endl;
 		return FALSE;
 	}
 
-	glUseProgram(lpGlContext->ShaderProgram);
+	glUseProgram(sctx->ShaderProgram);
 
 	DumpGlErrors("SetupShaders");
 
@@ -956,14 +977,15 @@ DWORD WINAPI RenderThread(void* parm)
 	CreateCubes(1, &fallingCube, &lpContext.lpIdxList[1]);
 	AddDynamicActor(&fallingCube, physx::PxVec3(0, 40, 0));
 
-	SetupShaders(&lpContext);
+	SetupShaders(&lpContext.screen, g_VtxShaderScreen, g_FrgShaderScreen);
+	SetupShaders(&lpContext.world, g_VertexShaderSource, g_FragmentShaderSource);
 	SetupTextures(&lpContext);
 
 	//gWorldMatrixLoc = glGetUniformLocation(g_ctx.ShaderProgram, "gWorld");
-	gModelMatrixLoc = glGetUniformLocation(lpContext.ShaderProgram, "gModelMatrix");
-	gViewMatrixLoc = glGetUniformLocation(lpContext.ShaderProgram, "gViewMatrix");
-	gProjMatrixLoc = glGetUniformLocation(lpContext.ShaderProgram, "gProjMatrix");
-	gPlayerPosLoc = glGetUniformLocation(lpContext.ShaderProgram, "gPlayerPos");
+	gModelMatrixLoc = glGetUniformLocation(lpContext.world.ShaderProgram, "gModelMatrix");
+	gViewMatrixLoc = glGetUniformLocation(lpContext.world.ShaderProgram, "gViewMatrix");
+	gProjMatrixLoc = glGetUniformLocation(lpContext.world.ShaderProgram, "gProjMatrix");
+	gPlayerPosLoc = glGetUniformLocation(lpContext.world.ShaderProgram, "gPlayerPos");
 
 	GetClientRect(hWnd, &clientRect);
 	glm::mat4 proj = glm::perspective(45.0f,
@@ -974,13 +996,13 @@ DWORD WINAPI RenderThread(void* parm)
 	glViewport(0, 0, clientRect.right - clientRect.left, clientRect.bottom - clientRect.top);
 
 	//gLookDirVecLoc = glGetUniformLocation(lpContext.ShaderProgram, "gLookDirVec");
-	gTextureLoc = glGetUniformLocation(lpContext.ShaderProgram, "texSampler");
+	gTextureLoc = glGetUniformLocation(lpContext.world.ShaderProgram, "texSampler");
 	glUniform1i(gTextureLoc, 0);
 
 	while (TRUE) {
 
 		QueryPerformanceCounter(&perfCount);
-		cout << "\r" << (int)FramesPerSecond << " fps; free time " << (int)prc << "%                    " << flush;
+		cout << "\r" << (int)FramesPerSecond << " fps; free time " << (int)prc << "%";
 		FramesPerSecond = (float)perfFreq.QuadPart / (float)(perfCount.QuadPart - lastCount);
 		lastCount = perfCount.QuadPart;
 
@@ -1013,13 +1035,18 @@ DWORD WINAPI RenderThread(void* parm)
 			glm::vec3 playerPos(g_ex, g_ey, g_ez);
 			glUniform3fv(gPlayerPosLoc, 1, &playerPos[0]);
 
+			cout << " dir " << g_az << ", " << sinf(DEG2RAD(g_az)) << ", " << cosf(DEG2RAD(g_az)) << "          " << flush;
+
 			if (bulletWait > 0) {
 				bulletWait++;
 				if (bulletWait == 60) bulletWait = 0;
 			}
 			if (g_KeysDown & KEY_MOUSE_LB && bulletWait == 0) {
-				cout << "FIRE!" << endl;
-				physx::PxTransform player(physx::PxVec3(g_ex, g_ey, g_ez));
+				//cout << "FIRE!" << endl;
+				physx::PxTransform player(physx::PxVec3(
+					g_ex + sinf(DEG2RAD(g_az)),
+					g_ey, 
+					g_ez + -cosf(DEG2RAD(g_az))));
 				physx::PxVec3 velVec(sinf(DEG2RAD(g_az)), -sinf(DEG2RAD(g_el)), -cosf(DEG2RAD(g_az)));
 				velVec.normalize();
 				if (bullets[nextbullet].lpBulletDyn)
@@ -1028,13 +1055,15 @@ DWORD WINAPI RenderThread(void* parm)
 				}
 				bullets[nextbullet].lpBulletDyn = createDynamic(player,
 					physx::PxSphereGeometry(1.0f),
-					player.rotate(velVec) * 200);
+					player.rotate(velVec) * 100);
 				nextbullet++;
 				if (nextbullet == 10) nextbullet = 0;
 				bulletWait = 1;
 			}
 
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			glUseProgram(lpContext.world.ShaderProgram);
 
 			// for lighting
 			//glm::vec3 lookDirVec(sinf(DEG2RAD(g_az)), sinf(DEG2RAD(g_el)), cosf(DEG2RAD(g_az)));
@@ -1141,6 +1170,42 @@ DWORD WINAPI RenderThread(void* parm)
 			glBindBuffer(GL_ARRAY_BUFFER, 0);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
+			//glUseProgram(lpContext.screen.ShaderProgram);
+			//float vertices[] = {
+			//	0.0f,  0.5f, // Vertex 1 (X, Y)
+			//	0.5f, -0.5f, // Vertex 2 (X, Y)
+			//	-0.5f, -0.5f  // Vertex 3 (X, Y)
+			//};
+			//GLuint vbo;
+			//glGenBuffers(1, &vbo); // Generate 1 buffer
+			//glBindBuffer(GL_ARRAY_BUFFER, vbo);
+			//glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+			//GLint posAttrib = glGetAttribLocation(lpContext.screen.ShaderProgram, "position");
+			//glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 0, 0);
+			//glEnableVertexAttribArray(posAttrib);
+			//GLuint vao;
+			//glGenVertexArrays(1, &vao);
+			//glBindVertexArray(vao);
+			//glDrawArrays(GL_TRIANGLES, 0, 3);
+
+			GLfloat crosshair_vertices[8] = {
+				-0.05f, 0.0f, 0.05f, 0.0f,
+				0.0f, -0.1f, 0.0f, 0.1f
+			};
+			GLuint chvbo = 0;
+			GLuint chvao = 0;
+			GLuint pos = 0;
+			glGenVertexArrays(1, &chvao);
+			glBindVertexArray(chvao);
+			glGenBuffers(1, &chvbo);
+			glBindBuffer(GL_ARRAY_BUFFER, chvbo);
+			glBufferData(GL_ARRAY_BUFFER, sizeof(crosshair_vertices), crosshair_vertices, GL_STATIC_DRAW);
+			glUseProgram(lpContext.screen.ShaderProgram);
+			pos = glGetAttribLocation(lpContext.screen.ShaderProgram, "position");
+			glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0, 0);
+			glEnableVertexAttribArray(pos);
+			glDrawArrays(GL_LINES, 0, 4);
+
 			SwapBuffers(hdc);
 		}
 		else {
@@ -1161,9 +1226,12 @@ DWORD WINAPI RenderThread(void* parm)
 		if (msToWait > 0) Sleep((DWORD)msToWait);
 	}
 
-	glDeleteShader(lpContext.VertexShader);
-	glDeleteShader(lpContext.FragmentShader);
-	glDeleteProgram(lpContext.ShaderProgram);
+	glDeleteShader(lpContext.world.VertexShader);
+	glDeleteShader(lpContext.world.FragmentShader);
+	glDeleteProgram(lpContext.world.ShaderProgram);
+	glDeleteShader(lpContext.screen.VertexShader);
+	glDeleteShader(lpContext.screen.FragmentShader);
+	glDeleteProgram(lpContext.screen.ShaderProgram);
 	glDeleteTextures(1, &lpContext.TexId);
 	for (unsigned int i = 0; i < lpContext.NumIdxList; i++) {
 		glDeleteBuffers(1, &lpContext.lpIdxList[i].VertexArrayBuffer);
@@ -1375,6 +1443,8 @@ void InitRawInput()
 	}
 }
 
+bool MouseLook = true;
+
 void HandleRawInput(LPARAM lParam)
 {
 	UINT dwSize;
@@ -1451,12 +1521,14 @@ void HandleRawInput(LPARAM lParam)
 	}
 	else if (raw->header.dwType == RIM_TYPEMOUSE)
 	{
-		g_az += ((float)raw->data.mouse.lLastX * 0.1f);
-		if (g_az < 0.0f) g_az += 360.0f;
-		if (g_az > 360.0f) g_az -= 360.0f;
-		g_el += ((float)raw->data.mouse.lLastY * 0.1f);
-		if (g_el < -90.0f) g_el = -90.0f;
-		if (g_el > 90.0f) g_el = 90.0f;
+		if (true == MouseLook) {
+			g_az += ((float)raw->data.mouse.lLastX * 0.1f);
+			if (g_az < 0.0f) g_az += 360.0f;
+			if (g_az > 360.0f) g_az -= 360.0f;
+			g_el += ((float)raw->data.mouse.lLastY * 0.1f);
+			if (g_el < -90.0f) g_el = -90.0f;
+			if (g_el > 90.0f) g_el = 90.0f;
+		}
 
 		if (raw->data.mouse.ulButtons & RI_MOUSE_LEFT_BUTTON_DOWN)
 		{
@@ -1485,8 +1557,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	UINT dwSize = 0;
 	UINT result = 0;
 	LPBYTE lpb = nullptr;
-	RECT rcClip;           // new area for ClipCursor
-	RECT rcOldClip;        // previous area for ClipCursor
+	//RECT rcClip;           // new area for ClipCursor
+	//RECT rcOldClip;        // previous area for ClipCursor
 
 	switch (message)
     {
@@ -1501,6 +1573,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			SetEvent(hStopEvent);
 			WaitForSingleObject(hRenderThread, INFINITE);
 			PostQuitMessage(0);
+		}
+		else if (wParam == 0x5a)
+		{
+			MouseLook = !MouseLook;
 		}
 		break;
 	case WM_CREATE:
