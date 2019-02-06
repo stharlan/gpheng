@@ -1,5 +1,3 @@
-// glw.cpp : Defines the entry point for the application.
-//
 
 #include "stdafx.h"
 #include "glw.h"
@@ -19,6 +17,11 @@
 #define F0 0.0f
 
 using namespace std;
+
+typedef struct {
+	physx::PxRigidDynamic* lpBulletDyn;
+	physx::PxMat44 pose;
+} BULLET_STRUCT;
 
 typedef struct {
 	float ox;
@@ -76,6 +79,7 @@ const DWORD KEY_S = 0x04;
 const DWORD KEY_D = 0x08;
 const DWORD KEY_Q = 0x10;
 const DWORD KEY_E = 0x20;
+const DWORD KEY_MOUSE_LB = 0x40;
 
 PFNGLGENBUFFERSPROC glGenBuffers;
 PFNGLBINDBUFFERPROC glBindBuffer;
@@ -236,6 +240,17 @@ void ReleaseStaticActorCube(CUBE* cube)
 {
 	if (cube->lpPxShape) cube->lpPxShape->release();
 	if (cube->lpPxRigidStatic) cube->lpPxRigidStatic->release();
+}
+
+physx::PxRigidDynamic* createDynamic(const physx::PxTransform& t, 
+	const physx::PxGeometry& geometry, 
+	const physx::PxVec3& velocity = physx::PxVec3(0))
+{
+	physx::PxRigidDynamic* dynamic = PxCreateDynamic(*mPhysics, t, geometry, *gMaterial, 10.0f);
+	dynamic->setAngularDamping(0.5f);
+	dynamic->setLinearVelocity(velocity);
+	gScene->addActor(*dynamic);
+	return dynamic;
 }
 
 void AddDynamicActor(CUBE* cube, physx::PxVec3 startingPos)
@@ -690,7 +705,6 @@ void ApplyKeys(float FramesPerSecond, float* mx, float* my, float* mz)
 	// accelerate to a velocity of -0.1635f per 60th of a second
 	*my = -0.1635f;
 	*mz = WalkingStride * pz;
-
 }
 
 bool InitializePhysx()
@@ -777,15 +791,25 @@ bool InitializePhysx()
 	return true;
 }
 
-physx::PxMat44 PhysxSimulate(CUBE* pCube)
+physx::PxMat44 PhysxSimulate(CUBE* pCube, BULLET_STRUCT* bullets)
 {
 	physx::PxShape* shapes[1];
 	gScene->simulate(1.0f / 60.0f); // 60th of a sec (60 fps)
 	gScene->fetchResults(true);
 	physx::PxU32 n = pCube->lpPxRigidDynamic->getNbShapes();
 	pCube->lpPxRigidDynamic->getShapes(shapes, n);
-	physx::PxGeometryHolder gh = shapes[0]->getGeometry();
+	//physx::PxGeometryHolder gh = shapes[0]->getGeometry();
 	const physx::PxMat44 shapePose(physx::PxShapeExt::getGlobalPose(*shapes[0], *pCube->lpPxRigidDynamic));
+
+	for (int b = 0; b < 10; b++) {
+		if (bullets[b].lpBulletDyn)
+		{
+			bullets[b].lpBulletDyn->getShapes(shapes, 1);
+			//gh = shapes[0]->getGeometry();
+			bullets[b].pose = physx::PxShapeExt::getGlobalPose(*shapes[0], *bullets[b].lpBulletDyn);
+		}
+	}
+
 	return shapePose;
 }
 
@@ -889,6 +913,10 @@ DWORD WINAPI RenderThread(void* parm)
 	CUBE* jsonCubes = nullptr;
 	unsigned int jsonCubeNum = 0;
 	GLCONTEXT lpContext;
+	BULLET_STRUCT bullets[10];
+	CUBE bulletCube = { -0.5, -0.5, -0.5, 1.0f, 1.0f, 1.0f, nullptr, nullptr };
+	unsigned int nextbullet = 0;
+	unsigned int bulletWait = 0;
 
 	QueryPerformanceFrequency(&perfFreq);
 	ctsPerFrame = (float)perfFreq.QuadPart / 60.0f;
@@ -905,13 +933,15 @@ DWORD WINAPI RenderThread(void* parm)
 		cout << "Physx successfully initialized" << endl;
 	}
 
+	memset(&bullets, 0, 10 * sizeof(BULLET_STRUCT));
+
 	cout << "Begin render thread" << endl;
 	SetupRenderingContext();
 
 	memset(&lpContext, 0, sizeof(GLCONTEXT));
-	lpContext.lpIdxList = (INDEXED_LIST*)malloc(2 * sizeof(INDEXED_LIST));
-	memset(lpContext.lpIdxList, 0, 2 * sizeof(INDEXED_LIST));
-	lpContext.NumIdxList = 2;
+	lpContext.lpIdxList = (INDEXED_LIST*)malloc(3 * sizeof(INDEXED_LIST));
+	memset(lpContext.lpIdxList, 0, 3 * sizeof(INDEXED_LIST));
+	lpContext.NumIdxList = 3;
 
 	cout << "loading geometry file" << endl;
 	jsonCubes = LoadGeometryJson("mz.json", &jsonCubeNum);
@@ -921,8 +951,11 @@ DWORD WINAPI RenderThread(void* parm)
 	}
 	cout << "geometry file stuff done" << endl;
 
+	CreateCubes(1, &bulletCube, &lpContext.lpIdxList[2]);
+
 	CreateCubes(1, &fallingCube, &lpContext.lpIdxList[1]);
 	AddDynamicActor(&fallingCube, physx::PxVec3(0, 40, 0));
+
 	SetupShaders(&lpContext);
 	SetupTextures(&lpContext);
 
@@ -969,7 +1002,7 @@ DWORD WINAPI RenderThread(void* parm)
 			//}
 
 			// simulate physx
-			physx::PxMat44 blockPose = PhysxSimulate(&fallingCube);
+			physx::PxMat44 blockPose = PhysxSimulate(&fallingCube, bullets);
 
 			// get the user location after simulation
 			physx::PxExtendedVec3 ppos = pChar->getPosition();
@@ -979,6 +1012,27 @@ DWORD WINAPI RenderThread(void* parm)
 
 			glm::vec3 playerPos(g_ex, g_ey, g_ez);
 			glUniform3fv(gPlayerPosLoc, 1, &playerPos[0]);
+
+			if (bulletWait > 0) {
+				bulletWait++;
+				if (bulletWait == 60) bulletWait = 0;
+			}
+			if (g_KeysDown & KEY_MOUSE_LB && bulletWait == 0) {
+				cout << "FIRE!" << endl;
+				physx::PxTransform player(physx::PxVec3(g_ex, g_ey, g_ez));
+				physx::PxVec3 velVec(sinf(DEG2RAD(g_az)), -sinf(DEG2RAD(g_el)), -cosf(DEG2RAD(g_az)));
+				velVec.normalize();
+				if (bullets[nextbullet].lpBulletDyn)
+				{
+					bullets[nextbullet].lpBulletDyn->release();
+				}
+				bullets[nextbullet].lpBulletDyn = createDynamic(player,
+					physx::PxSphereGeometry(1.0f),
+					player.rotate(velVec) * 200);
+				nextbullet++;
+				if (nextbullet == 10) nextbullet = 0;
+				bulletWait = 1;
+			}
 
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -1060,6 +1114,29 @@ DWORD WINAPI RenderThread(void* parm)
 			glDisableVertexAttribArray(1);
 			glDisableVertexAttribArray(2);
 			// END draw the falling block
+
+			// draw the bullets
+			glBindBuffer(GL_ARRAY_BUFFER, lpContext.lpIdxList[2].VertexArrayBuffer);
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, lpContext.lpIdxList[2].IndexArrayBuffer);
+
+			glEnableVertexAttribArray(0);
+			glEnableVertexAttribArray(1);
+			glEnableVertexAttribArray(2);
+
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), 0);
+			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+			glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(5 * sizeof(float)));
+			for (int b = 0; b < 10; b++) {
+				if (bullets[b].lpBulletDyn) {
+					// draw idxlist 2
+					glUniformMatrix4fv(gModelMatrixLoc, 1, GL_FALSE, &bullets[b].pose[0][0]);
+					glDrawElements(GL_TRIANGLES, lpContext.lpIdxList[2].NumIndices, GL_UNSIGNED_INT, 0);
+				}
+			}
+			glDisableVertexAttribArray(0);
+			glDisableVertexAttribArray(1);
+			glDisableVertexAttribArray(2);
+			// end draw the bullets
 
 			glBindBuffer(GL_ARRAY_BUFFER, 0);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
@@ -1380,6 +1457,14 @@ void HandleRawInput(LPARAM lParam)
 		g_el += ((float)raw->data.mouse.lLastY * 0.1f);
 		if (g_el < -90.0f) g_el = -90.0f;
 		if (g_el > 90.0f) g_el = 90.0f;
+
+		if (raw->data.mouse.ulButtons & RI_MOUSE_LEFT_BUTTON_DOWN)
+		{
+			g_KeysDown |= KEY_MOUSE_LB;
+		}
+		else {
+			g_KeysDown &= ~KEY_MOUSE_LB;
+		}
 	}
 
 	delete[] lpb;
@@ -1400,12 +1485,29 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	UINT dwSize = 0;
 	UINT result = 0;
 	LPBYTE lpb = nullptr;
-    switch (message)
+	RECT rcClip;           // new area for ClipCursor
+	RECT rcOldClip;        // previous area for ClipCursor
+
+	switch (message)
     {
 	case WM_INPUT:
 		HandleRawInput(lParam);
 		break;
+	case WM_KEYDOWN:
+		if (wParam == VK_ESCAPE)
+		{
+			//ShowCursor(TRUE);
+			//ClipCursor(&rcOldClip);
+			SetEvent(hStopEvent);
+			WaitForSingleObject(hRenderThread, INFINITE);
+			PostQuitMessage(0);
+		}
+		break;
 	case WM_CREATE:
+		//ShowCursor(FALSE);
+		//GetClipCursor(&rcOldClip);
+		//GetWindowRect(hWnd, &rcClip);
+		//cout << "clip cursor " << ClipCursor(&rcClip) << endl;
 		InitRawInput();
 		hRenderThread = CreateThread(nullptr, 0, RenderThread, (LPVOID)hWnd, 0, nullptr);
 		if (hRenderThread) {
@@ -1435,6 +1537,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         }
         break;
     case WM_DESTROY:
+		//ClipCursor(&rcOldClip); 		
 		SetEvent(hStopEvent);
 		WaitForSingleObject(hRenderThread, INFINITE);
         PostQuitMessage(0);
