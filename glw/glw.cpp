@@ -57,6 +57,7 @@ typedef struct {
 	GLuint TexId;
 	INDEXED_LIST* lpIdxList;
 	GLuint NumIdxList;
+	GLuint fontBase;
 } GLCONTEXT;
 
 // Global Variables:
@@ -172,7 +173,8 @@ const char* g_FragmentShaderSource =
 //calculate the location of this fragment (pixel) in world coordinates
 "  vec3 fragPosition = vec3(gModelMatrix * vec4(fragVert, 1));"
 //calculate the vector from this pixels surface to the light source
-"  vec3 surfaceToLight = gPlayerPos - fragPosition;"
+"  vec3 gPlayerPosX = vec3(gModelMatrix * vec4(gPlayerPos, 1));"
+"  vec3 surfaceToLight = gPlayerPosX - fragPosition;"
 //calculate the cosine of the angle of incidence
 "  float brightness = dot(normal, surfaceToLight) / (length(surfaceToLight) * length(normal));"
 "  brightness = clamp(brightness, 0, 1);"
@@ -908,6 +910,17 @@ CUBE* LoadGeometryJson(const char* filename, unsigned int* numCubes)
 	return lpCubes;
 }
 
+void InitGlFont(HDC hdc, GLCONTEXT *lpContext)
+{
+	lpContext->fontBase = glGenLists(96);
+	wglUseFontBitmaps(hdc, 33, 96, lpContext->fontBase);
+}
+
+void FreeGlFont(GLCONTEXT *lpContext)
+{
+	glDeleteLists(lpContext->fontBase, 96);
+}
+
 DWORD WINAPI RenderThread(void* parm)
 {
 	HWND hWnd = (HWND)parm;
@@ -938,12 +951,16 @@ DWORD WINAPI RenderThread(void* parm)
 	CUBE bulletCube = { -0.5, -0.5, -0.5, 1.0f, 1.0f, 1.0f, nullptr, nullptr };
 	unsigned int nextbullet = 0;
 	unsigned int bulletWait = 0;
+	char TextBuffer[256];
 
 	QueryPerformanceFrequency(&perfFreq);
 	ctsPerFrame = (float)perfFreq.QuadPart / 60.0f;
 
 	hdc = GetDC(hWnd);
 	hglrc = InitOpengl(hWnd, hdc);
+
+	// init font
+	InitGlFont(hdc, &lpContext);
 
 	// initialize physx
 	if (false == InitializePhysx())
@@ -1002,12 +1019,13 @@ DWORD WINAPI RenderThread(void* parm)
 	while (TRUE) {
 
 		QueryPerformanceCounter(&perfCount);
-		cout << "\r" << (int)FramesPerSecond << " fps; free time " << (int)prc << "%";
+		//cout << "\r" << (int)FramesPerSecond << " fps; free time " << (int)prc << "%";
 		FramesPerSecond = (float)perfFreq.QuadPart / (float)(perfCount.QuadPart - lastCount);
 		lastCount = perfCount.QuadPart;
 
 		if (WAIT_OBJECT_0 != WaitForSingleObject(hStopEvent, 0))
 		{
+			glUseProgram(lpContext.world.ShaderProgram);
 
 			// get user movement based on keys
 			float mx = 0, my = 0, mz = 0;
@@ -1035,7 +1053,7 @@ DWORD WINAPI RenderThread(void* parm)
 			glm::vec3 playerPos(g_ex, g_ey, g_ez);
 			glUniform3fv(gPlayerPosLoc, 1, &playerPos[0]);
 
-			cout << " dir " << g_az << ", " << sinf(DEG2RAD(g_az)) << ", " << cosf(DEG2RAD(g_az)) << "          " << flush;
+			//cout << " dir " << g_az << ", " << sinf(DEG2RAD(g_az)) << ", " << cosf(DEG2RAD(g_az)) << "          " << flush;
 
 			if (bulletWait > 0) {
 				bulletWait++;
@@ -1062,8 +1080,6 @@ DWORD WINAPI RenderThread(void* parm)
 			}
 
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-			glUseProgram(lpContext.world.ShaderProgram);
 
 			// for lighting
 			//glm::vec3 lookDirVec(sinf(DEG2RAD(g_az)), sinf(DEG2RAD(g_el)), cosf(DEG2RAD(g_az)));
@@ -1206,6 +1222,17 @@ DWORD WINAPI RenderThread(void* parm)
 			glEnableVertexAttribArray(pos);
 			glDrawArrays(GL_LINES, 0, 4);
 
+			//const char* b = "Ready...";
+			//cout << "\r" << (int)FramesPerSecond << " fps; free time " << (int)prc << "%";
+			memset(TextBuffer, 0, 256);
+			sprintf_s(TextBuffer, 256, "%i_fps;_free_time_%i_percent", (int)FramesPerSecond, (int)prc);
+			glRasterPos2f(-0.99, 0.95);
+			glPushAttrib(GL_LIST_BIT);
+			glListBase(lpContext.fontBase - 32);
+			glCallLists(strlen(TextBuffer), GL_UNSIGNED_BYTE, TextBuffer);
+			glPopAttrib();
+
+
 			SwapBuffers(hdc);
 		}
 		else {
@@ -1225,6 +1252,8 @@ DWORD WINAPI RenderThread(void* parm)
 		LONGLONG msToWait = (LONGLONG)remainingCounts * 1000 / perfFreq.QuadPart;
 		if (msToWait > 0) Sleep((DWORD)msToWait);
 	}
+
+	FreeGlFont(&lpContext);
 
 	glDeleteShader(lpContext.world.VertexShader);
 	glDeleteShader(lpContext.world.FragmentShader);
@@ -1358,6 +1387,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         }
     }
 
+	DEVMODE dmScreenSettings;
+	memset(&dmScreenSettings, 0, sizeof(DEVMODE));
+	dmScreenSettings.dmSize = sizeof(DEVMODE);
+	EnumDisplaySettings(nullptr, ENUM_CURRENT_SETTINGS, &dmScreenSettings);
+	ChangeDisplaySettings(&dmScreenSettings, CDS_RESET);
+
+	ShowCursor(true);
 	CloseHandle(hRenderThread);
 
 	FreeConsole();
@@ -1366,8 +1402,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     return (int) msg.wParam;
 }
-
-
 
 //
 //  FUNCTION: MyRegisterClass()
@@ -1388,7 +1422,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
     wcex.hIcon          = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_GLW));
     wcex.hCursor        = LoadCursor(nullptr, IDC_ARROW);
 	wcex.hbrBackground = nullptr;
-    wcex.lpszMenuName   = MAKEINTRESOURCEW(IDC_GLW);
+	wcex.lpszMenuName = nullptr; // MAKEINTRESOURCEW(IDC_GLW);
     wcex.lpszClassName  = szWindowClass;
     wcex.hIconSm        = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
 
@@ -1407,15 +1441,30 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 //
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
-   hInst = hInstance; // Store instance handle in our global variable
+	hInst = hInstance; // Store instance handle in our global variable
 
-   HWND hwnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW^WS_THICKFRAME,
-      CW_USEDEFAULT, 720, CW_USEDEFAULT, 480, nullptr, nullptr, hInstance, nullptr);
+	// look at display settings
+	DEVMODE dmScreenSettings;
+	memset(&dmScreenSettings, 0, sizeof(DEVMODE));
+	dmScreenSettings.dmSize = sizeof(DEVMODE);
+	EnumDisplaySettings(nullptr, ENUM_CURRENT_SETTINGS, &dmScreenSettings);
+	cout << dmScreenSettings.dmPelsWidth << endl;
+	cout << dmScreenSettings.dmPelsHeight << endl;
+	cout << dmScreenSettings.dmBitsPerPel << endl;
+
+	ChangeDisplaySettings(&dmScreenSettings, CDS_FULLSCREEN);
+
+	HWND hwnd = CreateWindowEx(WS_EX_APPWINDOW, szWindowClass, szTitle, 
+		WS_POPUP, //WS_OVERLAPPEDWINDOW^WS_THICKFRAME,
+		0, 0, dmScreenSettings.dmPelsWidth, dmScreenSettings.dmPelsHeight, 
+	   nullptr, nullptr, hInstance, nullptr);
 
    if (!hwnd)
    {
       return FALSE;
    }
+
+   ShowCursor(false);
 
    ShowWindow(hwnd, nCmdShow);
    UpdateWindow(hwnd);
@@ -1554,9 +1603,9 @@ void HandleRawInput(LPARAM lParam)
 //
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	UINT dwSize = 0;
-	UINT result = 0;
-	LPBYTE lpb = nullptr;
+	//UINT dwSize = 0;
+	//UINT result = 0;
+	//LPBYTE lpb = nullptr;
 	//RECT rcClip;           // new area for ClipCursor
 	//RECT rcOldClip;        // previous area for ClipCursor
 
