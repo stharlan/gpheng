@@ -122,29 +122,14 @@ const char* g_VertexShaderSource =
 "layout(location = 0) in vec3 vPosition;"
 "layout(location = 1) in vec2 vTexCoord;"
 "layout(location = 2) in vec3 vNormal;"
-//"layout(location = 3) in vec4 vColor;"
-//"uniform mat4 gWorld;"
 "uniform mat4 gModelMatrix;"
 "uniform mat4 gViewMatrix;"
 "uniform mat4 gProjMatrix;"
-//"uniform vec3 gLookDirVec;"
-//"out vec2 vUV;"
-//"out float vCLR;"
 "out vec3 fragVert;"
 "out vec2 fragTexCoord;"
 "out vec3 fragNormal;"
-""
-//"out vec4 vVertexColor;"
 "void main() {"
-"  vec4 modelPos = gModelMatrix * vec4(vPosition, 1.0);"
-"  vec4 viewPos = gViewMatrix * modelPos;"
-"  gl_Position = gProjMatrix * viewPos;"
-//"  vec3 normgLookDirVec = normalize(gLookDirVec);"
-// if norm and look are facing each other, result will be negative
-// need to invert this to provide positive reflection
-//"  vCLR = (clamp(dot(vNormal, normgLookDirVec) * -1.0,0.0,1.0) * 0.8) + 0.2;"
-//"  vUV = vTexCoord;"
-//"  vVertexColor = vColor;"
+"  gl_Position = gProjMatrix * (gViewMatrix * (gModelMatrix * vec4(vPosition, 1.0)));"
 "  fragTexCoord = vTexCoord;"
 "  fragNormal = vNormal;"
 "  fragVert = vPosition;"
@@ -153,27 +138,21 @@ const char* g_VertexShaderSource =
 const char* g_FragmentShaderSource =
 "#version 400\n"
 "uniform mat4 gModelMatrix;"
+"uniform mat4 gViewMatrix;"
 "uniform vec3 gPlayerPos;"
 "out vec4 frag_color;"
-//"in vec2 vUV;"
-//"in float vCLR;"
 "uniform sampler2D texSampler;"
-//"in vec4 vVertexColor;"
-
 "in vec2 fragTexCoord;"
 "in vec3 fragNormal;"
 "in vec3 fragVert;"
 "void main() {"
-//"  frag_color = texture2D(texSampler, vUV.xy) * vCLR;"
-//"  frag_color = texture2D(texSampler, vUV.xy) * vVertexColor;"
-
-//calculate normal in world coordinates
-"  mat3 normalMatrix = transpose(inverse(mat3(gModelMatrix)));"
-"  vec3 normal = normalize(normalMatrix * fragNormal);"
+"  mat3 normalMMatrix = transpose(inverse(mat3(gModelMatrix)));"
+"  mat3 normalVMatrix = transpose(inverse(mat3(gViewMatrix)));"
+"  vec3 normal = normalize(normalVMatrix * (normalMMatrix * fragNormal));"
 //calculate the location of this fragment (pixel) in world coordinates
-"  vec3 fragPosition = vec3(gModelMatrix * vec4(fragVert, 1));"
+"  vec3 fragPosition = vec3(gViewMatrix * (gModelMatrix * vec4(fragVert, 1)));"
 //calculate the vector from this pixels surface to the light source
-"  vec3 gPlayerPosX = vec3(gModelMatrix * vec4(gPlayerPos, 1));"
+"  vec3 gPlayerPosX = vec3(gViewMatrix * (gModelMatrix * vec4(gPlayerPos, 1)));"
 "  vec3 surfaceToLight = gPlayerPosX - fragPosition;"
 //calculate the cosine of the angle of incidence
 "  float brightness = dot(normal, surfaceToLight) / (length(surfaceToLight) * length(normal));"
@@ -182,7 +161,6 @@ const char* g_FragmentShaderSource =
 // 1. The angle of incidence: brightness
 // 2. The color/intensities of the light: light.intensities
 // 3. The texture and texture coord: texture(tex, fragTexCoord)
-//"  vec4 surfaceColor = texture(tex, fragTexCoord);"
 "  vec4 surfaceColor = texture2D(texSampler, fragTexCoord.xy);"
 "  frag_color = vec4(brightness * vec3(1,1,1) * surfaceColor.rgb, surfaceColor.a);"
 "}";
