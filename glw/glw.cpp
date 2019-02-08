@@ -411,10 +411,10 @@ void CreateCubes(unsigned int numCubes, CUBE* cubeList, INDEXED_LIST* lpList)
 
 		// face 1 vertices x/y neg z
 		// pos x,y,z		                                                    tex u,v		                     norm i,j,k
-		ptr[0] = cb->ox;           ptr[1] = cb->oy;           ptr[2] = cb->oz;  ptr[3] = 0.0f;  ptr[4] = cb->dy;   ptr[5] = 0.0f;  ptr[6] = 0.0f;  ptr[7] = -1.0f;
+		ptr[0] = cb->ox;           ptr[1] = cb->oy;           ptr[2] = cb->oz;  ptr[3] = 0.0f;  ptr[4] = cb->dy / 2.0f;   ptr[5] = 0.0f;  ptr[6] = 0.0f;  ptr[7] = -1.0f;
 		ptr[8] = cb->ox;           ptr[9] = cb->oy + cb->dy;  ptr[10] = cb->oz; ptr[11] = 0.0f; ptr[12] = 0.0f;  ptr[13] = 0.0f; ptr[14] = 0.0f; ptr[15] = -1.0f;
-		ptr[16] = cb->ox + cb->dx; ptr[17] = cb->oy + cb->dy; ptr[18] = cb->oz; ptr[19] = cb->dx; ptr[20] = 0.0f;  ptr[21] = 0.0f; ptr[22] = 0.0f; ptr[23] = -1.0f;
-		ptr[24] = cb->ox + cb->dx; ptr[25] = cb->oy;          ptr[26] = cb->oz; ptr[27] = cb->dx; ptr[28] = cb->dy;  ptr[29] = 0.0f; ptr[30] = 0.0f; ptr[31] = -1.0f;
+		ptr[16] = cb->ox + cb->dx; ptr[17] = cb->oy + cb->dy; ptr[18] = cb->oz; ptr[19] = cb->dx / 2.0f; ptr[20] = 0.0f;  ptr[21] = 0.0f; ptr[22] = 0.0f; ptr[23] = -1.0f;
+		ptr[24] = cb->ox + cb->dx; ptr[25] = cb->oy;          ptr[26] = cb->oz; ptr[27] = cb->dx / 2.0f; ptr[28] = cb->dy / 2.0f;  ptr[29] = 0.0f; ptr[30] = 0.0f; ptr[31] = -1.0f;
 
 		// face 1 indexes
 		iptr[0] = (c * 24) + 0; iptr[1] = (c * 24) + 2; iptr[2] = (c * 24) + 1;
@@ -422,49 +422,49 @@ void CreateCubes(unsigned int numCubes, CUBE* cubeList, INDEXED_LIST* lpList)
 
 		// face 2 vertices x/y pos z
 		// pos x,y,z
-		ptr[32] = cb->ox;          ptr[33] = cb->oy;          ptr[34] = cb->oz + cb->dz; ptr[35] = 0.0f; ptr[36] = cb->dy; ptr[37] = 0.0f; ptr[38] = 0.0f; ptr[39] = 1.0f;
+		ptr[32] = cb->ox;          ptr[33] = cb->oy;          ptr[34] = cb->oz + cb->dz; ptr[35] = 0.0f; ptr[36] = cb->dy / 2.0f; ptr[37] = 0.0f; ptr[38] = 0.0f; ptr[39] = 1.0f;
 		ptr[40] = cb->ox;          ptr[41] = cb->oy + cb->dy; ptr[42] = cb->oz + cb->dz; ptr[43] = 0.0f; ptr[44] = 0.0f; ptr[45] = 0.0f; ptr[46] = 0.0f; ptr[47] = 1.0f;
-		ptr[48] = cb->ox + cb->dx; ptr[49] = cb->oy + cb->dy; ptr[50] = cb->oz + cb->dz; ptr[51] = cb->dx; ptr[52] = 0.0f; ptr[53] = 0.0f; ptr[54] = 0.0f; ptr[55] = 1.0f;
-		ptr[56] = cb->ox + cb->dx; ptr[57] = cb->oy;          ptr[58] = cb->oz + cb->dz; ptr[59] = cb->dx; ptr[60] = cb->dy; ptr[61] = 0.0f; ptr[62] = 0.0f; ptr[63] = 1.0f;
+		ptr[48] = cb->ox + cb->dx; ptr[49] = cb->oy + cb->dy; ptr[50] = cb->oz + cb->dz; ptr[51] = cb->dx / 2.0f; ptr[52] = 0.0f; ptr[53] = 0.0f; ptr[54] = 0.0f; ptr[55] = 1.0f;
+		ptr[56] = cb->ox + cb->dx; ptr[57] = cb->oy;          ptr[58] = cb->oz + cb->dz; ptr[59] = cb->dx / 2.0f; ptr[60] = cb->dy / 2.0f; ptr[61] = 0.0f; ptr[62] = 0.0f; ptr[63] = 1.0f;
 
 		iptr[6] = (c * 24) + 4; iptr[7] = (c * 24) + 5; iptr[8] = (c * 24) + 6;
 		iptr[9] = (c * 24) + 4; iptr[10] = (c * 24) + 6; iptr[11] = (c * 24) + 7;
 
 		// face 3 vertices x/y pos z
-		ptr[64] = cb->ox;          ptr[65] = cb->oy; ptr[66] = cb->oz;          ptr[67] = 0.0f; ptr[68] = cb->dz; ptr[69] = 0.0f; ptr[70] = -1.0f; ptr[71] = 0.0f;
+		ptr[64] = cb->ox;          ptr[65] = cb->oy; ptr[66] = cb->oz;          ptr[67] = 0.0f; ptr[68] = cb->dz / 2.0f; ptr[69] = 0.0f; ptr[70] = -1.0f; ptr[71] = 0.0f;
 		ptr[72] = cb->ox;          ptr[73] = cb->oy; ptr[74] = cb->oz + cb->dz; ptr[75] = 0.0f; ptr[76] = 0.0f; ptr[77] = 0.0f; ptr[78] = -1.0f; ptr[79] = 0.0f;
-		ptr[80] = cb->ox + cb->dx; ptr[81] = cb->oy; ptr[82] = cb->oz + cb->dz; ptr[83] = cb->dx; ptr[84] = 0.0f; ptr[85] = 0.0f; ptr[86] = -1.0f; ptr[87] = 0.0f;
-		ptr[88] = cb->ox + cb->dx; ptr[89] = cb->oy; ptr[90] = cb->oz;          ptr[91] = cb->dx; ptr[92] = cb->dz; ptr[93] = 0.0f; ptr[94] = -1.0f; ptr[95] = 0.0f;
+		ptr[80] = cb->ox + cb->dx; ptr[81] = cb->oy; ptr[82] = cb->oz + cb->dz; ptr[83] = cb->dx / 2.0f; ptr[84] = 0.0f; ptr[85] = 0.0f; ptr[86] = -1.0f; ptr[87] = 0.0f;
+		ptr[88] = cb->ox + cb->dx; ptr[89] = cb->oy; ptr[90] = cb->oz;          ptr[91] = cb->dx / 2.0f; ptr[92] = cb->dz / 2.0f; ptr[93] = 0.0f; ptr[94] = -1.0f; ptr[95] = 0.0f;
 
 		// face 3 indexes
 		iptr[12] = (c * 24) + 8; iptr[13] = (c * 24) + 9; iptr[14] = (c * 24) + 10;
 		iptr[15] = (c * 24) + 8; iptr[16] = (c * 24) + 10; iptr[17] = (c * 24) + 11;
 
 		// face 4 vertices x/y pos z
-		ptr[96] = cb->ox;           ptr[97] = cb->oy + cb->dy;  ptr[98] = cb->oz;           ptr[99] = 0.0f;  ptr[100] = cb->dz; ptr[101] = 0.0f; ptr[102] = 1.0f; ptr[103] = 0.0f;
+		ptr[96] = cb->ox;           ptr[97] = cb->oy + cb->dy;  ptr[98] = cb->oz;           ptr[99] = 0.0f;  ptr[100] = cb->dz / 2.0f; ptr[101] = 0.0f; ptr[102] = 1.0f; ptr[103] = 0.0f;
 		ptr[104] = cb->ox;          ptr[105] = cb->oy + cb->dy; ptr[106] = cb->oz + cb->dz; ptr[107] = 0.0f; ptr[108] = 0.0f; ptr[109] = 0.0f; ptr[110] = 1.0f; ptr[111] = 0.0f;
-		ptr[112] = cb->ox + cb->dx; ptr[113] = cb->oy + cb->dy; ptr[114] = cb->oz + cb->dz; ptr[115] = cb->dx; ptr[116] = 0.0f; ptr[117] = 0.0f; ptr[118] = 1.0f; ptr[119] = 0.0f;
-		ptr[120] = cb->ox + cb->dx; ptr[121] = cb->oy + cb->dy; ptr[122] = cb->oz;          ptr[123] = cb->dx; ptr[124] = cb->dz; ptr[125] = 0.0f; ptr[126] = 1.0f; ptr[127] = 0.0f;
+		ptr[112] = cb->ox + cb->dx; ptr[113] = cb->oy + cb->dy; ptr[114] = cb->oz + cb->dz; ptr[115] = cb->dx / 2.0f; ptr[116] = 0.0f; ptr[117] = 0.0f; ptr[118] = 1.0f; ptr[119] = 0.0f;
+		ptr[120] = cb->ox + cb->dx; ptr[121] = cb->oy + cb->dy; ptr[122] = cb->oz;          ptr[123] = cb->dx / 2.0f; ptr[124] = cb->dz / 2.0f; ptr[125] = 0.0f; ptr[126] = 1.0f; ptr[127] = 0.0f;
 
 		// face 4 indexes
 		iptr[18] = (c * 24) + 12; iptr[19] = (c * 24) + 14; iptr[20] = (c * 24) + 13;
 		iptr[21] = (c * 24) + 12; iptr[22] = (c * 24) + 15; iptr[23] = (c * 24) + 14;
 
 		// face 4 vertices x/y pos z
-		ptr[128] = cb->ox; ptr[129] = cb->oy;          ptr[130] = cb->oz;          ptr[131] = 0.0f; ptr[132] = cb->dz; ptr[133] = -1.0f; ptr[134] = 0.0f; ptr[135] = 0.0f;
-		ptr[136] = cb->ox; ptr[137] = cb->oy;          ptr[138] = cb->oz + cb->dz; ptr[139] = 0.0f; ptr[140] = 0.0f; ptr[141] = -1.0f; ptr[142] = 0.0f; ptr[143] = 0.0f;
-		ptr[144] = cb->ox; ptr[145] = cb->oy + cb->dy; ptr[146] = cb->oz + cb->dz; ptr[147] = cb->dy; ptr[148] = 0.0f; ptr[149] = -1.0f; ptr[150] = 0.0f; ptr[151] = 0.0f;
-		ptr[152] = cb->ox; ptr[153] = cb->oy + cb->dy; ptr[154] = cb->oz;          ptr[155] = cb->dy; ptr[156] = cb->dz; ptr[157] = -1.0f; ptr[158] = 0.0f; ptr[159] = 0.0f;
+		ptr[128] = cb->ox; ptr[129] = cb->oy;          ptr[130] = cb->oz;          ptr[131] = 0.0f;          ptr[132] = cb->dz / 2.0f; ptr[133] = -1.0f; ptr[134] = 0.0f; ptr[135] = 0.0f;
+		ptr[136] = cb->ox; ptr[137] = cb->oy;          ptr[138] = cb->oz + cb->dz; ptr[139] = 0.0f;          ptr[140] = 0.0f; ptr[141] = -1.0f; ptr[142] = 0.0f; ptr[143] = 0.0f;
+		ptr[144] = cb->ox; ptr[145] = cb->oy + cb->dy; ptr[146] = cb->oz + cb->dz; ptr[147] = cb->dy / 2.0f; ptr[148] = 0.0f; ptr[149] = -1.0f; ptr[150] = 0.0f; ptr[151] = 0.0f;
+		ptr[152] = cb->ox; ptr[153] = cb->oy + cb->dy; ptr[154] = cb->oz;          ptr[155] = cb->dy / 2.0f; ptr[156] = cb->dz / 2.0f; ptr[157] = -1.0f; ptr[158] = 0.0f; ptr[159] = 0.0f;
 
 		// face 4 indexes
 		iptr[24] = (c * 24) + 16; iptr[25] = (c * 24) + 18; iptr[26] = (c * 24) + 17;
 		iptr[27] = (c * 24) + 16; iptr[28] = (c * 24) + 19; iptr[29] = (c * 24) + 18;
 
 		// face 4 vertices x/y pos z
-		ptr[160] = cb->ox + cb->dx; ptr[161] = cb->oy;          ptr[162] = cb->oz;          ptr[163] = 0.0f; ptr[164] = cb->dz; ptr[165] = 1.0f; ptr[166] = 0.0f; ptr[167] = 0.0f;
-		ptr[168] = cb->ox + cb->dx; ptr[169] = cb->oy;          ptr[170] = cb->oz + cb->dz; ptr[171] = 0.0f; ptr[172] = 0.0f; ptr[173] = 1.0f; ptr[174] = 0.0f; ptr[175] = 0.0f;
-		ptr[176] = cb->ox + cb->dx; ptr[177] = cb->oy + cb->dy; ptr[178] = cb->oz + cb->dz; ptr[179] = cb->dy; ptr[180] = 0.0f; ptr[181] = 1.0f; ptr[182] = 0.0f; ptr[183] = 0.0f;
-		ptr[184] = cb->ox + cb->dx; ptr[185] = cb->oy + cb->dy; ptr[186] = cb->oz;          ptr[187] = cb->dy; ptr[188] = cb->dz; ptr[189] = 1.0f; ptr[190] = 0.0f; ptr[191] = 0.0f;
+		ptr[160] = cb->ox + cb->dx; ptr[161] = cb->oy;          ptr[162] = cb->oz;          ptr[163] = 0.0f;          ptr[164] = cb->dz / 2.0f; ptr[165] = 1.0f; ptr[166] = 0.0f; ptr[167] = 0.0f;
+		ptr[168] = cb->ox + cb->dx; ptr[169] = cb->oy;          ptr[170] = cb->oz + cb->dz; ptr[171] = 0.0f;          ptr[172] = 0.0f; ptr[173] = 1.0f; ptr[174] = 0.0f; ptr[175] = 0.0f;
+		ptr[176] = cb->ox + cb->dx; ptr[177] = cb->oy + cb->dy; ptr[178] = cb->oz + cb->dz; ptr[179] = cb->dy / 2.0f; ptr[180] = 0.0f; ptr[181] = 1.0f; ptr[182] = 0.0f; ptr[183] = 0.0f;
+		ptr[184] = cb->ox + cb->dx; ptr[185] = cb->oy + cb->dy; ptr[186] = cb->oz;          ptr[187] = cb->dy / 2.0f; ptr[188] = cb->dz / 2.0f; ptr[189] = 1.0f; ptr[190] = 0.0f; ptr[191] = 0.0f;
 
 		// face 4 indexes
 		iptr[30] = (c * 24) + 20; iptr[31] = (c * 24) + 21; iptr[32] = (c * 24) + 22;
@@ -636,7 +636,7 @@ void SetupTextures(GLCONTEXT* lpGlContext)
 	UINT iw, ih;
 	const GLsizei numMipMaps = 3;
 
-	Gdiplus::Bitmap *img = Gdiplus::Bitmap::FromFile(L"croxx.png", FALSE);
+	Gdiplus::Bitmap *img = Gdiplus::Bitmap::FromFile(L"kitchtilec.png", FALSE);
 	iw = img->GetWidth();
 	ih = img->GetHeight();
 	Gdiplus::Rect r(0, 0, iw, ih);
@@ -650,7 +650,7 @@ void SetupTextures(GLCONTEXT* lpGlContext)
 	//glTexImage2D(GL_TEXTURE_2D, 0, 4, iw, ih, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, bmpd.Scan0);
 	// 24 bit png
 	//glTexImage2D(GL_TEXTURE_2D, 0, 3, iw, ih, 0, GL_RGB, GL_UNSIGNED_BYTE, bmpd.Scan0);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, iw, ih, GL_RGB, GL_UNSIGNED_BYTE, bmpd.Scan0);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, iw, ih, GL_BGRA_EXT, GL_UNSIGNED_BYTE, bmpd.Scan0);
 	glGenerateMipmap(GL_TEXTURE_2D);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -951,7 +951,10 @@ DWORD WINAPI RenderThread(void* parm)
 	CUBE bulletCube = { -0.5, -0.5, -0.5, 1.0f, 1.0f, 1.0f, nullptr, nullptr };
 	unsigned int nextbullet = 0;
 	unsigned int bulletWait = 0;
-	char TextBuffer[256];
+	char TextBuffer[80];
+	ScreenBuffer sb;
+
+	sb.AddString("Ready...");
 
 	QueryPerformanceFrequency(&perfFreq);
 	ctsPerFrame = (float)perfFreq.QuadPart / 60.0f;
@@ -1036,6 +1039,7 @@ DWORD WINAPI RenderThread(void* parm)
 				pChar->move(physx::PxVec3(mx, my, mz), 0.0f, 1.0f / 60.0f, physx::PxControllerFilters());
 			//if (collisionFlags.isSet(physx::PxControllerCollisionFlag::eCOLLISION_DOWN))
 			//{
+				//sb.AddString("Collission!!");
 				//cout << "collision!" << endl;
 				//cout << "x:" << g_ex << " y:" << g_ey << " z:" << g_ez << endl;
 				//cout << "hit the floor" << endl;
@@ -1053,14 +1057,12 @@ DWORD WINAPI RenderThread(void* parm)
 			glm::vec3 playerPos(g_ex, g_ey, g_ez);
 			glUniform3fv(gPlayerPosLoc, 1, &playerPos[0]);
 
-			//cout << " dir " << g_az << ", " << sinf(DEG2RAD(g_az)) << ", " << cosf(DEG2RAD(g_az)) << "          " << flush;
-
 			if (bulletWait > 0) {
 				bulletWait++;
 				if (bulletWait == 60) bulletWait = 0;
 			}
 			if (g_KeysDown & KEY_MOUSE_LB && bulletWait == 0) {
-				//cout << "FIRE!" << endl;
+				sb.AddString("Fire!!");
 				physx::PxTransform player(physx::PxVec3(
 					g_ex + sinf(DEG2RAD(g_az)),
 					g_ey, 
@@ -1081,16 +1083,11 @@ DWORD WINAPI RenderThread(void* parm)
 
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-			// for lighting
-			//glm::vec3 lookDirVec(sinf(DEG2RAD(g_az)), sinf(DEG2RAD(g_el)), cosf(DEG2RAD(g_az)));
-			//glUniform3fv(gLookDirVecLoc, 1, &lookDirVec[0]);
-
 			// projection matrix
 			glm::mat4 r1 = glm::rotate(DEG2RAD(g_az), glm::vec3(0.0f, 1.0f, 0.0f));
 			glm::mat4 r2 = glm::rotate(DEG2RAD(g_el), glm::vec3(cosf(DEG2RAD(g_az)), 0.0f, sinf(DEG2RAD(g_az))));
 			glm::mat4 t = glm::translate(glm::vec3(-g_ex, -g_ey, -g_ez));
 			glm::mat4 view = r1 * r2 * t;
-			//glm::mat4 final = proj * modelmat;
 			glUniformMatrix4fv(gViewMatrixLoc, 1, GL_FALSE, &view[0][0]);
 
 			// model matrix is identity at this point
@@ -1100,25 +1097,6 @@ DWORD WINAPI RenderThread(void* parm)
 			// set the active texture
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, lpContext.TexId);
-
-			// BEGIN draw the floor
-			//glBindBuffer(GL_ARRAY_BUFFER, g_ctx.idxList[0].VertexArrayBuffer);
-			//glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ctx.idxList[0].IndexArrayBuffer);
-
-			//glEnableVertexAttribArray(0);
-			//glEnableVertexAttribArray(1);
-			//glEnableVertexAttribArray(2);
-
-			//glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), 0);
-			//glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-			//glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(5 * sizeof(float)));
-
-			//glDrawElements(GL_TRIANGLES, g_ctx.idxList[0].NumIndices, GL_UNSIGNED_INT, 0);
-
-			//glDisableVertexAttribArray(0);
-			//glDisableVertexAttribArray(1);
-			//glDisableVertexAttribArray(2);
-			// END draw the floor
 
 			// BEGIN draw the json cubes
 			glBindBuffer(GL_ARRAY_BUFFER, lpContext.lpIdxList[0].VertexArrayBuffer);
@@ -1186,24 +1164,6 @@ DWORD WINAPI RenderThread(void* parm)
 			glBindBuffer(GL_ARRAY_BUFFER, 0);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-			//glUseProgram(lpContext.screen.ShaderProgram);
-			//float vertices[] = {
-			//	0.0f,  0.5f, // Vertex 1 (X, Y)
-			//	0.5f, -0.5f, // Vertex 2 (X, Y)
-			//	-0.5f, -0.5f  // Vertex 3 (X, Y)
-			//};
-			//GLuint vbo;
-			//glGenBuffers(1, &vbo); // Generate 1 buffer
-			//glBindBuffer(GL_ARRAY_BUFFER, vbo);
-			//glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-			//GLint posAttrib = glGetAttribLocation(lpContext.screen.ShaderProgram, "position");
-			//glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 0, 0);
-			//glEnableVertexAttribArray(posAttrib);
-			//GLuint vao;
-			//glGenVertexArrays(1, &vao);
-			//glBindVertexArray(vao);
-			//glDrawArrays(GL_TRIANGLES, 0, 3);
-
 			GLfloat crosshair_vertices[8] = {
 				-0.05f, 0.0f, 0.05f, 0.0f,
 				0.0f, -0.1f, 0.0f, 0.1f
@@ -1222,11 +1182,17 @@ DWORD WINAPI RenderThread(void* parm)
 			glEnableVertexAttribArray(pos);
 			glDrawArrays(GL_LINES, 0, 4);
 
-			//const char* b = "Ready...";
-			//cout << "\r" << (int)FramesPerSecond << " fps; free time " << (int)prc << "%";
-			memset(TextBuffer, 0, 256);
-			sprintf_s(TextBuffer, 256, "%i_fps;_free_time_%i_percent", (int)FramesPerSecond, (int)prc);
-			glRasterPos2f(-0.99, 0.95);
+			for (int i = 0; i < 20; i++) {
+				const char* thisLine = sb.GetString(i);
+				if (thisLine) {
+					glRasterPos2f(-0.99, 0.95 - (i * 0.05));
+					glPushAttrib(GL_LIST_BIT);
+					glListBase(lpContext.fontBase - 32);
+					glCallLists(strlen(thisLine), GL_UNSIGNED_BYTE, thisLine);
+					glPopAttrib();
+				}
+			}
+			glRasterPos2f(-0.99f, -0.99f);
 			glPushAttrib(GL_LIST_BIT);
 			glListBase(lpContext.fontBase - 32);
 			glCallLists(strlen(TextBuffer), GL_UNSIGNED_BYTE, TextBuffer);
@@ -1248,7 +1214,8 @@ DWORD WINAPI RenderThread(void* parm)
 		LONGLONG elapsed = perfCountEnd.QuadPart - perfCount.QuadPart;
 		float remainingCounts = ctsPerFrame - (float)elapsed;
 		prc = remainingCounts * 100.0f / ctsPerFrame;
-		//cout << FramesPerSecond << " fps; pct free time " << (int)prc << "                    " << flush;
+		memset(TextBuffer, 0, 80);
+		sprintf_s(TextBuffer, 80, "%i_fps;_free_time_%i_percent", (int)FramesPerSecond, (int)prc);
 		LONGLONG msToWait = (LONGLONG)remainingCounts * 1000 / perfFreq.QuadPart;
 		if (msToWait > 0) Sleep((DWORD)msToWait);
 	}
