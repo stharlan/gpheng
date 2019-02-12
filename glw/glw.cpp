@@ -136,6 +136,21 @@ public:
 		glBindBuffer(GL_ARRAY_BUFFER, VertexArrayBuffer);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IndexArrayBuffer);
 	}
+	void BindAttribs()
+	{
+		glEnableVertexAttribArray(0);
+		glEnableVertexAttribArray(1);
+		glEnableVertexAttribArray(2);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), 0);
+		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(5 * sizeof(float)));
+	}
+	void UnbindAttribs()
+	{
+		glDisableVertexAttribArray(0);
+		glDisableVertexAttribArray(1);
+		glDisableVertexAttribArray(2);
+	}
 	void DrawElements()
 	{
 		glDrawElements(GL_TRIANGLES, (GLsizei)Indices.size(), GL_UNSIGNED_INT, 0);
@@ -1014,6 +1029,23 @@ IndexedTriangleList CreateFallingCube()
 	return triList;
 }
 
+void TestNormals()
+{
+	cout << "Testing normals..." << endl;
+	glm::vec3 n(1, 0, 0);
+	glm::vec3 nn3 = glm::normalize(n);
+	glm::vec4 nn4 = glm::vec4(glm::normalize(n), 1);
+	cout << nn4[0] << ", " << nn4[1] << ", " << nn4[2] << ", " << nn4[3] << endl;
+
+	glm::mat4 r = glm::rotate(DEG2RAD(90), glm::vec3(0, 1, 0)) * glm::translate(glm::vec3(10, 10, 10));
+	glm::vec4 nnr4 = r * nn4;
+	cout << nnr4[0] << ", " << nnr4[1] << ", " << nnr4[2] << ", " << nnr4[3] << endl;
+
+	glm::mat3 normm = glm::inverse(glm::transpose(glm::mat3(r)));
+	glm::vec3 nnr3 = normm * nn3;
+	cout << nnr3[0] << ", " << nnr3[1] << ", " << nnr3[2] << endl;
+}
+
 DWORD WINAPI RenderThread(void* parm)
 {
 	HWND hWnd = (HWND)parm;
@@ -1035,6 +1067,7 @@ DWORD WINAPI RenderThread(void* parm)
 	ScreenBuffer sb;
 
 	sb.AddString("Ready...");
+	TestNormals();
 
 	QueryPerformanceFrequency(&perfFreq);
 	ctsPerFrame = (float)perfFreq.QuadPart / 60.0f;
@@ -1170,21 +1203,10 @@ DWORD WINAPI RenderThread(void* parm)
 			lpContext.lpWorldShader->SetNormalViewMatrix(&normViewMatrix[0][0]);
 
 			// BEGIN draw the json cubes
-			lpContext.lpIdtFile->BindBuffers();			
-
-			glEnableVertexAttribArray(0);
-			glEnableVertexAttribArray(1);
-			glEnableVertexAttribArray(2);
-
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), 0);
-			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-			glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(5 * sizeof(float)));
-
+			lpContext.lpIdtFile->BindBuffers();
+			lpContext.lpIdtFile->BindAttribs();
 			lpContext.lpIdtFile->DrawElements();
-
-			glDisableVertexAttribArray(0);
-			glDisableVertexAttribArray(1);
-			glDisableVertexAttribArray(2);
+			lpContext.lpIdtFile->UnbindAttribs();
 			// END draw the json cubes
 
 			// model matrix (view matrix is the same)
@@ -1198,36 +1220,16 @@ DWORD WINAPI RenderThread(void* parm)
 
 			// BEGIN draw the falling block
 			lpContext.lpIdtFallingCube->BindBuffers();
-
-			glEnableVertexAttribArray(0);
-			glEnableVertexAttribArray(1);
-			glEnableVertexAttribArray(2);
-
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), 0);
-			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-			glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(5 * sizeof(float)));
-
+			lpContext.lpIdtFallingCube->BindAttribs();
 			lpContext.lpIdtFallingCube->DrawElements();
-
-			glDisableVertexAttribArray(0);
-			glDisableVertexAttribArray(1);
-			glDisableVertexAttribArray(2);
+			lpContext.lpIdtFallingCube->UnbindAttribs();
 			// END draw the falling block
 
 			// draw the bullets
 			lpContext.lpIdtBulletBox->BindBuffers();
-
-			glEnableVertexAttribArray(0);
-			glEnableVertexAttribArray(1);
-			glEnableVertexAttribArray(2);
-
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), 0);
-			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-			glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(5 * sizeof(float)));
+			lpContext.lpIdtBulletBox->BindAttribs();
 			for (int b = 0; b < 10; b++) {
 				if (bullets[b].lpBulletDyn) {
-					// draw idxlist 2
-
 					// model matrix (view matrix is the same)
 					lpContext.lpWorldShader->SetModelMatrix(&bullets[b].pose[0][0]);
 					glmNormModelMatrix[0][0] = bullets[b].pose[0][0]; glmNormModelMatrix[0][1] = bullets[b].pose[0][1]; glmNormModelMatrix[0][2] = bullets[b].pose[0][2];
@@ -1235,20 +1237,17 @@ DWORD WINAPI RenderThread(void* parm)
 					glmNormModelMatrix[2][0] = bullets[b].pose[2][0]; glmNormModelMatrix[2][1] = bullets[b].pose[2][1]; glmNormModelMatrix[2][2] = bullets[b].pose[2][2];
 					normModelMatrix = glm::inverse(glm::transpose(glmNormModelMatrix));
 					lpContext.lpWorldShader->SetNormalModelMatrix(&normModelMatrix[0][0]);
-
 					lpContext.lpIdtBulletBox->DrawElements();
 				}
 			}
-			glDisableVertexAttribArray(0);
-			glDisableVertexAttribArray(1);
-			glDisableVertexAttribArray(2);
+			lpContext.lpIdtBulletBox->UnbindAttribs();
 			// end draw the bullets
 
 			glBindBuffer(GL_ARRAY_BUFFER, 0);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
 			// here we change the shader program
-
+			lpContext.lpScreenShader->SetAsCurrent();
 			GLfloat crosshair_vertices[8] = {
 				-0.05f, 0.0f, 0.05f, 0.0f,
 				0.0f, -0.1f, 0.0f, 0.1f
@@ -1260,7 +1259,6 @@ DWORD WINAPI RenderThread(void* parm)
 			glGenBuffers(1, &chvbo);
 			glBindBuffer(GL_ARRAY_BUFFER, chvbo);
 			glBufferData(GL_ARRAY_BUFFER, sizeof(crosshair_vertices), crosshair_vertices, GL_STATIC_DRAW);
-			lpContext.lpScreenShader->SetAsCurrent();
 			glVertexAttribPointer(lpContext.lpScreenShader->getPos(), 2, GL_FLOAT, GL_FALSE, 0, 0);
 			glEnableVertexAttribArray(lpContext.lpScreenShader->getPos());
 			glDrawArrays(GL_LINES, 0, 4);
