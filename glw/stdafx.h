@@ -16,7 +16,8 @@
 #include <malloc.h>
 #include <memory.h>
 #include <tchar.h>
-
+#include <vector>
+#include <map>
 
 // reference additional headers your program requires here
 #include <gl/GL.h>

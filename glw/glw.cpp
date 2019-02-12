@@ -18,75 +18,6 @@
 
 using namespace std;
 
-typedef struct {
-	physx::PxRigidDynamic* lpBulletDyn;
-	physx::PxMat44 pose;
-} BULLET_STRUCT;
-
-typedef struct {
-	float ox;
-	float oy;
-	float oz;
-	float dx;
-	float dy;
-	float dz;
-	physx::PxShape* lpPxShape;
-	union {
-		physx::PxRigidDynamic* lpPxRigidDynamic;
-		physx::PxRigidStatic* lpPxRigidStatic;
-	};
-} CUBE;
-
-typedef struct {
-	GLuint VertexArrayBuffer;
-	GLuint IndexArrayBuffer;
-	GLuint NumIndices;
-	float* Vertices;
-	unsigned int* Indices;
-} INDEXED_LIST;
-
-typedef struct {
-	GLuint VertexShader;
-	GLuint FragmentShader;
-	GLuint ShaderProgram;
-} SHADER_PROGRAM_CONTEXT;
-
-typedef struct {
-	SHADER_PROGRAM_CONTEXT world;
-	SHADER_PROGRAM_CONTEXT screen;
-	GLuint TexId;
-	INDEXED_LIST* lpIdxList;
-	GLuint NumIdxList;
-	GLuint fontBase;
-} GLCONTEXT;
-
-// Global Variables:
-HINSTANCE hInst;                                // current instance
-WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
-WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
-
-// Forward declarations of functions included in this code module:
-ATOM                MyRegisterClass(HINSTANCE hInstance);
-BOOL                InitInstance(HINSTANCE, int);
-LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
-INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
-HGLRC InitOpengl(HWND hwnd, HDC hdc);
-
-HANDLE hRenderThread = nullptr;
-HANDLE hStopEvent = nullptr;
-
-float g_ex = 15.0f, g_ey = 20.0f, g_ez = 15.0f;
-float g_az = -45.0f, g_el = 0.0f;
-
-DWORD g_KeysDown = 0;
-const DWORD KEY_W = 0x01;
-const DWORD KEY_A = 0x02;
-const DWORD KEY_S = 0x04;
-const DWORD KEY_D = 0x08;
-const DWORD KEY_Q = 0x10;
-const DWORD KEY_E = 0x20;
-const DWORD KEY_MOUSE_LB = 0x40;
-
 PFNGLGENBUFFERSPROC glGenBuffers;
 PFNGLBINDBUFFERPROC glBindBuffer;
 PFNGLBUFFERDATAPROC glBufferData;
@@ -116,6 +47,255 @@ PFNGLDELETEPROGRAMPROC glDeleteProgram;
 PFNGLDELETESHADERPROC glDeleteShader;
 PFNGLTEXSTORAGE2DPROC glTexStorage2D;
 PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
+PFNGLUNIFORMMATRIX3FVPROC glUniformMatrix3fv;
+
+typedef struct {
+	physx::PxRigidDynamic* lpBulletDyn;
+	physx::PxMat44 pose;
+} BULLET_STRUCT;
+
+typedef struct {
+	float ox;
+	float oy;
+	float oz;
+	float dx;
+	float dy;
+	float dz;
+} CUBE;
+
+void DumpGlErrors(const char* FunctionName)
+{
+	GLenum err;
+	while ((err = glGetError()) != GL_NO_ERROR) {
+		cout << "GL ERROR: " << FunctionName << ": " << hex << err << dec << endl;
+	}
+}
+
+class IndexedTriangleList
+{
+public:
+	IndexedTriangleList() { }
+	IndexedTriangleList(const IndexedTriangleList& p) {
+		this->VertexArrayBuffer = p.VertexArrayBuffer;
+		this->IndexArrayBuffer = p.IndexArrayBuffer;
+		this->Vertices = p.Vertices;
+		this->Indices = p.Indices;
+		this->pxRigidStatic = nullptr;
+		this->pxRigidDynamic = nullptr;
+		this->pxShape = nullptr;
+	}
+	IndexedTriangleList& operator=(IndexedTriangleList& p) {
+		this->VertexArrayBuffer = p.VertexArrayBuffer;
+		this->IndexArrayBuffer = p.IndexArrayBuffer;
+		this->Vertices = p.Vertices;
+		this->Indices = p.Indices;
+		this->pxRigidStatic = p.pxRigidStatic;
+		this->pxRigidDynamic = p.pxRigidDynamic;
+		this->pxShape = p.pxShape;
+		return *this;
+	}
+	~IndexedTriangleList() {}
+	void FreeResources() {
+		glDeleteBuffers(1, &this->VertexArrayBuffer);
+		glDeleteBuffers(1, &this->IndexArrayBuffer);
+		if (this->pxShape) this->pxShape->release();
+		if (this->pxRigidStatic) this->pxRigidStatic->release();
+		if (this->pxRigidDynamic) this->pxRigidDynamic->release();
+	}
+	void AddVertex(float vx, float vy, float vz, float tx, float ty, float ni, float nj, float nk)
+	{
+		this->Vertices.push_back(vx);
+		this->Vertices.push_back(vy);
+		this->Vertices.push_back(vz);
+		this->Vertices.push_back(tx);
+		this->Vertices.push_back(ty);
+		this->Vertices.push_back(ni);
+		this->Vertices.push_back(nj);
+		this->Vertices.push_back(nk);
+	}
+	void AddTriIdices(unsigned int idx1, unsigned int idx2, unsigned int idx3)
+	{
+		this->Indices.push_back(idx1);
+		this->Indices.push_back(idx2);
+		this->Indices.push_back(idx3);
+	}
+	void SetGLBufferIds(GLuint vertex, GLuint index)
+	{
+		this->VertexArrayBuffer = vertex;
+		this->IndexArrayBuffer = index;
+	}
+	void BindArrays()
+	{
+		glBindBuffer(GL_ARRAY_BUFFER, this->VertexArrayBuffer);
+		glBufferData(GL_ARRAY_BUFFER,  this->Vertices.size() * sizeof(float), this->Vertices.data(), GL_STATIC_DRAW);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->IndexArrayBuffer);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, this->Indices.size() * sizeof(unsigned int), this->Indices.data(), GL_STATIC_DRAW);
+	}
+	void BindBuffers()
+	{
+		glBindBuffer(GL_ARRAY_BUFFER, VertexArrayBuffer);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IndexArrayBuffer);
+	}
+	void DrawElements()
+	{
+		glDrawElements(GL_TRIANGLES, (GLsizei)Indices.size(), GL_UNSIGNED_INT, 0);
+	}
+	void SetRigidDynamic(physx::PxRigidDynamic* lpDyn, physx::PxShape* lpShp)
+	{
+		this->pxRigidDynamic = lpDyn;
+		this->pxShape = lpShp;
+	}
+	void SetRigidStatic(physx::PxRigidStatic* lpStatic, physx::PxShape* lpShp)
+	{
+		this->pxRigidStatic = lpStatic;
+		this->pxShape = lpShp;
+	}
+	physx::PxRigidDynamic* get_RigidDynamic() { return this->pxRigidDynamic; }
+	physx::PxRigidStatic* get_RigidStatic() { return this->pxRigidStatic; }
+private:
+	GLuint VertexArrayBuffer;
+	GLuint IndexArrayBuffer;
+	std::vector<float> Vertices;
+	std::vector<unsigned int> Indices;
+	physx::PxRigidStatic* pxRigidStatic;
+	physx::PxRigidDynamic* pxRigidDynamic;
+	physx::PxShape* pxShape;
+};
+
+typedef struct {
+	GLuint VertexShader;
+	GLuint FragmentShader;
+	GLuint ShaderProgram;
+} SHADER_PROGRAM_CONTEXT;
+
+class ShaderProgramContext
+{
+public:
+	ShaderProgramContext() {
+		this->VertexShader = 0;
+		this->FragmentShader = 0;
+		this->ShaderProgram = 0;
+	}
+	ShaderProgramContext(const char* VertexShaderSource, const char* FragmentShaderSource) {
+		this->VertexShader = 0;
+		this->FragmentShader = 0;
+		this->ShaderProgram = 0;
+		if (TRUE == this->SetupShaders(VertexShaderSource, FragmentShaderSource))
+		{
+			this->SetAsCurrent();
+		}
+	}
+	~ShaderProgramContext() { }
+	void FreeResources() {
+		glDeleteShader(this->VertexShader);
+		glDeleteShader(this->FragmentShader);
+		glDeleteProgram(this->ShaderProgram);
+	}
+	void BuildFromSource(const char* VertexShaderSource, const char* FragmentShaderSource) {
+		if (TRUE == this->SetupShaders(VertexShaderSource, FragmentShaderSource))
+		{
+			this->SetAsCurrent();
+		}
+	}
+	void SetAsCurrent() { 
+		glUseProgram(this->ShaderProgram); 
+	}
+	void SetUniformInt(GLuint loc, GLint value) {
+		glUniform1i(loc, value);
+	}
+	void SetUniformVector3(GLuint loc, const GLfloat* value)
+	{
+		glUniform3fv(loc, 1, value);
+	}
+	void SetUniformMatrix4(GLuint loc, const GLfloat* value)
+	{
+		glUniformMatrix4fv(loc, 1, GL_FALSE, value);
+	}
+	void SetUniformMatrix3(GLuint loc, const GLfloat* value)
+	{
+		glUniformMatrix3fv(loc, 1, GL_FALSE, value);
+	}
+private:
+	GLuint VertexShader;
+	GLuint FragmentShader;
+
+protected:
+	GLuint ShaderProgram;
+
+private:
+	BOOL SetupShaders(const char* vtxss, const char* frgss)
+	{
+		GLint success = 0;
+
+		this->ShaderProgram = glCreateProgram();
+
+		this->VertexShader = glCreateShader(GL_VERTEX_SHADER);
+		glShaderSource(this->VertexShader, 1, &vtxss, NULL);
+		glCompileShader(this->VertexShader);
+		glGetShaderiv(this->VertexShader, GL_COMPILE_STATUS, &success);
+		if (!success) {
+			cout << "ERROR: Failed to compile vertex shader";
+			return FALSE;
+		}
+
+		this->FragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+		glShaderSource(this->FragmentShader, 1, &frgss, NULL);
+		glCompileShader(this->FragmentShader);
+		glGetShaderiv(this->FragmentShader, GL_COMPILE_STATUS, &success);
+		if (!success) {
+			cout << "ERROR: Failed to compile fragment shader";
+			return FALSE;
+		}
+
+		glAttachShader(this->ShaderProgram, this->VertexShader);
+		glAttachShader(this->ShaderProgram, this->FragmentShader);
+		glLinkProgram(this->ShaderProgram);
+
+		glGetProgramiv(this->ShaderProgram, GL_LINK_STATUS, &success);
+		if (!success) {
+			cout << "ERROR: Failed to link shader program" << endl;
+			return FALSE;
+		}
+
+		glValidateProgram(this->ShaderProgram);
+		glGetProgramiv(this->ShaderProgram, GL_VALIDATE_STATUS, &success);
+		if (!success) {
+			cout << "ERROR: Failed to validate shader program" << endl;
+			return FALSE;
+		}
+
+		DumpGlErrors("SetupShaders");
+
+		return TRUE;
+	}
+};
+
+// Global Variables:
+HINSTANCE hInst;                                // current instance
+WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
+WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
+
+// Forward declarations of functions included in this code module:
+ATOM                MyRegisterClass(HINSTANCE hInstance);
+BOOL                InitInstance(HINSTANCE, int);
+LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
+HGLRC InitOpengl(HWND hwnd, HDC hdc);
+
+HANDLE hRenderThread = nullptr;
+HANDLE hStopEvent = nullptr;
+
+float g_ex = 15.0f, g_ey = 20.0f, g_ez = 15.0f;
+float g_az = -45.0f, g_el = 0.0f;
+
+DWORD g_KeysDown = 0;
+const DWORD KEY_W = 0x01;
+const DWORD KEY_A = 0x02;
+const DWORD KEY_S = 0x04;
+const DWORD KEY_D = 0x08;
+const DWORD KEY_Q = 0x10;
+const DWORD KEY_E = 0x20;
+const DWORD KEY_MOUSE_LB = 0x40;
 
 const char* g_VertexShaderSource =
 "#version 400\n"
@@ -125,37 +305,40 @@ const char* g_VertexShaderSource =
 "uniform mat4 gModelMatrix;"
 "uniform mat4 gViewMatrix;"
 "uniform mat4 gProjMatrix;"
+"uniform mat3 gNormViewMatrix;"
+"uniform mat3 gNormModelMatrix;"
 "out vec3 fragVert;"
 "out vec2 fragTexCoord;"
-"out vec3 fragNormal;"
+"out vec3 normalEye;"
 "void main() {"
 "  gl_Position = gProjMatrix * (gViewMatrix * (gModelMatrix * vec4(vPosition, 1.0)));"
 "  fragTexCoord = vTexCoord;"
-"  fragNormal = vNormal;"
-"  fragVert = vPosition;"
+"  normalEye = gNormViewMatrix * (gNormModelMatrix * vNormal);"
+"  fragVert = vPosition;" // this should be calculated here and not passed on
 "}";
 
 const char* g_FragmentShaderSource =
 "#version 400\n"
+"in vec2 fragTexCoord;"
+//"in vec3 fragNormal;"
+"in vec3 normalEye;"
+"in vec3 fragVert;"
 "uniform mat4 gModelMatrix;"
 "uniform mat4 gViewMatrix;"
 "uniform vec3 gPlayerPos;"
-"out vec4 frag_color;"
 "uniform sampler2D texSampler;"
-"in vec2 fragTexCoord;"
-"in vec3 fragNormal;"
-"in vec3 fragVert;"
+"out vec4 frag_color;"
 "void main() {"
-"  mat3 normalMMatrix = transpose(inverse(mat3(gModelMatrix)));"
-"  mat3 normalVMatrix = transpose(inverse(mat3(gViewMatrix)));"
-"  vec3 normal = normalize(normalVMatrix * (normalMMatrix * fragNormal));"
+//"  mat3 normalMMatrix = transpose(inverse(mat3(gModelMatrix)));"
+//"  mat3 normalVMatrix = transpose(inverse(mat3(gViewMatrix)));"
+//"  vec3 normal = normalize(normalVMatrix * (normalMMatrix * fragNormal));"
 //calculate the location of this fragment (pixel) in world coordinates
 "  vec3 fragPosition = vec3(gViewMatrix * (gModelMatrix * vec4(fragVert, 1)));"
 //calculate the vector from this pixels surface to the light source
 "  vec3 gPlayerPosX = vec3(gViewMatrix * (gModelMatrix * vec4(gPlayerPos, 1)));"
 "  vec3 surfaceToLight = gPlayerPosX - fragPosition;"
 //calculate the cosine of the angle of incidence
-"  float brightness = dot(normal, surfaceToLight) / (length(surfaceToLight) * length(normal));"
+"  float brightness = dot(normalEye, surfaceToLight) / (length(surfaceToLight) * length(normalEye));"
 "  brightness = clamp(brightness, 0, 1);"
 //calculate final color of the pixel, based on:
 // 1. The angle of incidence: brightness
@@ -164,6 +347,63 @@ const char* g_FragmentShaderSource =
 "  vec4 surfaceColor = texture2D(texSampler, fragTexCoord.xy);"
 "  frag_color = vec4(brightness * vec3(1,1,1) * surfaceColor.rgb, surfaceColor.a);"
 "}";
+
+class WorldShaderProgramContext : public ShaderProgramContext
+{
+public:
+	WorldShaderProgramContext() {
+		this->BuildFromSource(g_VertexShaderSource, g_FragmentShaderSource);
+		this->ResolveLocations();
+	}
+	~WorldShaderProgramContext() {}
+	void ResolveLocations()
+	{
+		this->gModelMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gModelMatrix");
+		this->gViewMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gViewMatrix");
+		this->gProjMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gProjMatrix");
+		this->gPlayerPosLoc = glGetUniformLocation(this->ShaderProgram, "gPlayerPos");
+		this->gNormModelMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gNormViewMatrix");
+		this->gNormViewMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gNormModelMatrix");
+		this->gTextureLoc = glGetUniformLocation(this->ShaderProgram, "texSampler");
+	}
+
+	void SetTexture(GLint value) {
+		this->SetUniformInt(this->gTextureLoc, value);
+	}
+	void SetProjMatrix(const GLfloat* value)
+	{
+		this->SetUniformMatrix4(this->gProjMatrixLoc, value);
+	}
+	void SetPlayerPos(const GLfloat* value)
+	{
+		this->SetUniformVector3(gPlayerPosLoc, value);
+	}
+	void SetModelMatrix(const GLfloat* value)
+	{
+		this->SetUniformMatrix4(gModelMatrixLoc, value);
+	}
+	void SetNormalModelMatrix(const GLfloat* value)
+	{
+		this->SetUniformMatrix3(gNormModelMatrixLoc, value);
+	}
+	void SetViewMatrix(const GLfloat* value)
+	{
+		this->SetUniformMatrix4(gViewMatrixLoc, value);
+	}
+	void SetNormalViewMatrix(const GLfloat* value)
+	{
+		this->SetUniformMatrix3(gNormViewMatrixLoc, value);
+	}
+
+private:
+	GLuint gModelMatrixLoc;
+	GLuint gViewMatrixLoc;
+	GLuint gProjMatrixLoc;
+	GLuint gPlayerPosLoc;
+	GLuint gNormViewMatrixLoc;
+	GLuint gNormModelMatrixLoc;
+	GLuint gTextureLoc;
+};
 
 const char* g_VtxShaderScreen = "#version 150\n"
 "in vec2 position;"
@@ -178,6 +418,29 @@ const char* g_FrgShaderScreen = "#version 150\n"
 "{"
 "  outColor = vec4(1.0, 1.0, 1.0, 1.0);"
 "}";
+
+class ScreenShaderProgramContext : public ShaderProgramContext
+{
+public:
+	ScreenShaderProgramContext() {
+		this->BuildFromSource(g_VtxShaderScreen, g_FrgShaderScreen);
+		this->pos = glGetAttribLocation(this->ShaderProgram, "position");
+	}
+	~ScreenShaderProgramContext() {}
+	GLuint getPos() { return this->pos; }
+private:
+	GLuint pos;
+};
+
+typedef struct {
+	WorldShaderProgramContext* lpWorldShader;
+	ScreenShaderProgramContext* lpScreenShader;
+	GLuint TexId;
+	IndexedTriangleList* lpIdtFile;
+	IndexedTriangleList* lpIdtFallingCube;
+	IndexedTriangleList* lpIdtBulletBox;
+	GLuint fontBase;
+} GLCONTEXT;
 
 class MyAllocator : public physx::PxAllocatorCallback
 {
@@ -218,14 +481,6 @@ physx::PxRigidStatic* groundPlane = nullptr;
 physx::PxControllerManager *cmanager = nullptr;
 physx::PxController *pChar = nullptr;
 physx::PxCooking* cooking = nullptr;
-
-void DumpGlErrors(const char* FunctionName)
-{
-	GLenum err;
-	while ((err = glGetError()) != GL_NO_ERROR) {
-		cout << "GL ERROR: " << FunctionName << ": " << hex << err << dec << endl;
-	}
-}
 
 // to get the vector projection of a on to plane
 void ProjectVecOnPlaneNormal(glm::vec3 &a, glm::vec3 &n, glm::vec3 &c)
@@ -289,6 +544,7 @@ void GetGlFuncs()
 	glUniform3fv = (PFNGLUNIFORM3FVPROC)wglGetProcAddress("glUniform3fv");
 	glTexStorage2D = (PFNGLTEXSTORAGE2DPROC)wglGetProcAddress("glTexStorage2D");
 	glGetAttribLocation = (PFNGLGETATTRIBLOCATIONPROC)wglGetProcAddress("glGetAttribLocation");
+	glUniformMatrix3fv = (PFNGLUNIFORMMATRIX3FVPROC)wglGetProcAddress("glUniformMatrix3fv");
 }
 
 void SetupRenderingContext()
@@ -298,18 +554,6 @@ void SetupRenderingContext()
 	glFrontFace(GL_CW);
 	glCullFace(GL_BACK);
 	glEnable(GL_CULL_FACE);
-}
-
-void ReleaseDynamicActorCube(CUBE* cube)
-{
-	if (cube->lpPxShape) cube->lpPxShape->release();
-	if (cube->lpPxRigidDynamic) cube->lpPxRigidDynamic->release();
-}
-
-void ReleaseStaticActorCube(CUBE* cube)
-{
-	if (cube->lpPxShape) cube->lpPxShape->release();
-	if (cube->lpPxRigidStatic) cube->lpPxRigidStatic->release();
 }
 
 physx::PxRigidDynamic* createDynamic(const physx::PxTransform& t, 
@@ -323,42 +567,48 @@ physx::PxRigidDynamic* createDynamic(const physx::PxTransform& t,
 	return dynamic;
 }
 
-void AddDynamicActor(CUBE* cube, physx::PxVec3 startingPos)
+void AddDynamicActor(IndexedTriangleList& trilist, physx::PxVec3 pos, physx::PxVec3 size)
 {
 	// add an actor for the cube
 
 	//physx::PxVec3 position(0, 40, 0);
 	//float radius = 1.0f;
 	//float halfHeight = 2.0f;
-	cube->lpPxRigidDynamic = mPhysics->createRigidDynamic(physx::PxTransform(startingPos));
+	physx::PxRigidDynamic* lpDyn = mPhysics->createRigidDynamic(physx::PxTransform(pos));
 	// transform that rotates 90 deg about the z axis
 	//physx::PxTransform relativePose(physx::PxQuat(physx::PxHalfPi, physx::PxVec3(0, 0, 1)));
 	//aCapsuleShape = physx::PxRigidActorExt::createExclusiveShape(*aCapsuleActor,
 		//physx::PxCapsuleGeometry(radius, halfHeight), *gMaterial);
-	cube->lpPxShape = physx::PxRigidActorExt::createExclusiveShape(
-		*cube->lpPxRigidDynamic,
-		physx::PxBoxGeometry(3, 3, 3), *gMaterial);
+	physx::PxShape* lpShp = physx::PxRigidActorExt::createExclusiveShape(
+		*lpDyn,
+		//physx::PxBoxGeometry(3, 3, 3), *gMaterial);
+		physx::PxBoxGeometry(size), *gMaterial);
 	//aCapsuleShape->setLocalPose(relativePose);
-	physx::PxRigidBodyExt::updateMassAndInertia(*cube->lpPxRigidDynamic, 10.0f);
-	gScene->addActor(*cube->lpPxRigidDynamic);
+	physx::PxRigidBodyExt::updateMassAndInertia(*lpDyn, 10.0f);
+	gScene->addActor(*lpDyn);
+	trilist.SetRigidDynamic(lpDyn, lpShp);
 }
 
-void AddStaticActor(CUBE* cube)
+void AddStaticActor(IndexedTriangleList& trilist, physx::PxVec3 pos, physx::PxVec3 size)
 {
-	physx::PxVec3 pos(
-		cube->ox + (cube->dx / 2.0f),
-		cube->oy + (cube->dy / 2.0f),
-		cube->oz + (cube->dz / 2.0f));
-	cube->lpPxRigidStatic = mPhysics->createRigidStatic(physx::PxTransform(pos));
-	cube->lpPxShape = physx::PxRigidActorExt::createExclusiveShape(
-		*cube->lpPxRigidStatic,
-		physx::PxBoxGeometry(cube->dx / 2.0f, cube->dy / 2.0f, cube->dz / 2.0f),
+	//physx::PxVec3 pos(
+		//cube->ox + (cube->dx / 2.0f),
+		//cube->oy + (cube->dy / 2.0f),
+		//cube->oz + (cube->dz / 2.0f));
+	physx::PxRigidStatic* lpStatic = mPhysics->createRigidStatic(physx::PxTransform(pos));
+	physx::PxShape* lpShp = physx::PxRigidActorExt::createExclusiveShape(
+		*lpStatic,
+		//physx::PxBoxGeometry(cube->dx / 2.0f, cube->dy / 2.0f, cube->dz / 2.0f),
+		physx::PxBoxGeometry(size),
 		*gMaterial);
-	gScene->addActor(*cube->lpPxRigidStatic);
+	gScene->addActor(*lpStatic);
+	trilist.SetRigidStatic(lpStatic, lpShp);
 }
 
-void CreateCubes(unsigned int numCubes, CUBE* cubeList, INDEXED_LIST* lpList)
+IndexedTriangleList CreateCubes(unsigned int numCubes, CUBE* cubeList)
 {
+
+	IndexedTriangleList trilist;
 
 	GLuint buffers[2];
 
@@ -369,8 +619,8 @@ void CreateCubes(unsigned int numCubes, CUBE* cubeList, INDEXED_LIST* lpList)
 	// 16 * 8 = four faces
 	int CubeDataSize = 24 * 8; // 24 * 8;
 	int VertDataSize = CubeDataSize * numCubes;
-	lpList->Vertices = (float*)malloc(VertDataSize * sizeof(float));
-	memset(lpList->Vertices, 0, VertDataSize * sizeof(float));
+	//lpList->Vertices = (float*)malloc(VertDataSize * sizeof(float));
+	//memset(lpList->Vertices, 0, VertDataSize * sizeof(float));
 
 	// for testing this is only the x/y face
 	// 6 = one face
@@ -379,233 +629,90 @@ void CreateCubes(unsigned int numCubes, CUBE* cubeList, INDEXED_LIST* lpList)
 	// 24 = four faces
 	int CubeIndexSize = 36; // 36;
 	int IndexDataSize = CubeIndexSize * numCubes;
-	lpList->Indices = (unsigned int*)malloc(IndexDataSize * sizeof(unsigned int));
-	memset(lpList->Indices, 0, IndexDataSize * sizeof(unsigned int));
+	//lpList->Indices = (unsigned int*)malloc(IndexDataSize * sizeof(unsigned int));
+	//memset(lpList->Indices, 0, IndexDataSize * sizeof(unsigned int));
 
 	for (unsigned int c = 0; c < numCubes; c++) {
-		unsigned int* iptr = (unsigned int*)(lpList->Indices + (c * CubeIndexSize));
-		float* ptr = (float*)(lpList->Vertices + (c * CubeDataSize));
+		//unsigned int* iptr = (unsigned int*)(lpList->Indices + (c * CubeIndexSize));
+		//float* ptr = (float*)(lpList->Vertices + (c * CubeDataSize));
 		CUBE* cb = cubeList + c;
 
 		// face 1 vertices x/y neg z
 		// pos x,y,z		                                                    tex u,v		                     norm i,j,k
-		ptr[0] = cb->ox;           ptr[1] = cb->oy;           ptr[2] = cb->oz;  ptr[3] = 0.0f;  ptr[4] = cb->dy / 2.0f;   ptr[5] = 0.0f;  ptr[6] = 0.0f;  ptr[7] = -1.0f;
-		ptr[8] = cb->ox;           ptr[9] = cb->oy + cb->dy;  ptr[10] = cb->oz; ptr[11] = 0.0f; ptr[12] = 0.0f;  ptr[13] = 0.0f; ptr[14] = 0.0f; ptr[15] = -1.0f;
-		ptr[16] = cb->ox + cb->dx; ptr[17] = cb->oy + cb->dy; ptr[18] = cb->oz; ptr[19] = cb->dx / 2.0f; ptr[20] = 0.0f;  ptr[21] = 0.0f; ptr[22] = 0.0f; ptr[23] = -1.0f;
-		ptr[24] = cb->ox + cb->dx; ptr[25] = cb->oy;          ptr[26] = cb->oz; ptr[27] = cb->dx / 2.0f; ptr[28] = cb->dy / 2.0f;  ptr[29] = 0.0f; ptr[30] = 0.0f; ptr[31] = -1.0f;
+		trilist.AddVertex(cb->ox, cb->oy, cb->oz, 0.0f, cb->dy / 2.0f, 0.0f, 0.0f, -1.0f);
+		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz, cb->dx / 2.0f, 0.0f, 0.0f, 0.0f, -1.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz, cb->dx / 2.0f, cb->dy / 2.0f, 0.0f, 0.0f, -1.0f);
 
 		// face 1 indexes
-		iptr[0] = (c * 24) + 0; iptr[1] = (c * 24) + 2; iptr[2] = (c * 24) + 1;
-		iptr[3] = (c * 24) + 0; iptr[4] = (c * 24) + 3; iptr[5] = (c * 24) + 2;
+		trilist.AddTriIdices((c * 24) + 0, (c * 24) + 2, (c * 24) + 1);
+		trilist.AddTriIdices((c * 24) + 0, (c * 24) + 3, (c * 24) + 2);
 
 		// face 2 vertices x/y pos z
 		// pos x,y,z
-		ptr[32] = cb->ox;          ptr[33] = cb->oy;          ptr[34] = cb->oz + cb->dz; ptr[35] = 0.0f; ptr[36] = cb->dy / 2.0f; ptr[37] = 0.0f; ptr[38] = 0.0f; ptr[39] = 1.0f;
-		ptr[40] = cb->ox;          ptr[41] = cb->oy + cb->dy; ptr[42] = cb->oz + cb->dz; ptr[43] = 0.0f; ptr[44] = 0.0f; ptr[45] = 0.0f; ptr[46] = 0.0f; ptr[47] = 1.0f;
-		ptr[48] = cb->ox + cb->dx; ptr[49] = cb->oy + cb->dy; ptr[50] = cb->oz + cb->dz; ptr[51] = cb->dx / 2.0f; ptr[52] = 0.0f; ptr[53] = 0.0f; ptr[54] = 0.0f; ptr[55] = 1.0f;
-		ptr[56] = cb->ox + cb->dx; ptr[57] = cb->oy;          ptr[58] = cb->oz + cb->dz; ptr[59] = cb->dx / 2.0f; ptr[60] = cb->dy / 2.0f; ptr[61] = 0.0f; ptr[62] = 0.0f; ptr[63] = 1.0f;
+		trilist.AddVertex(cb->ox, cb->oy, cb->oz + cb->dz, 0.0f, cb->dy / 2.0f, 0.0f, 0.0f, 1.0f);
+		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz + cb->dz, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz + cb->dz, cb->dx / 2.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz + cb->dz, cb->dx / 2.0f, cb->dy / 2.0f, 0.0f, 0.0f, 1.0f);
 
-		iptr[6] = (c * 24) + 4; iptr[7] = (c * 24) + 5; iptr[8] = (c * 24) + 6;
-		iptr[9] = (c * 24) + 4; iptr[10] = (c * 24) + 6; iptr[11] = (c * 24) + 7;
+		trilist.AddTriIdices((c * 24) + 4, (c * 24) + 5, (c * 24) + 6);
+		trilist.AddTriIdices((c * 24) + 4, (c * 24) + 6, (c * 24) + 7);
 
 		// face 3 vertices x/y pos z
-		ptr[64] = cb->ox;          ptr[65] = cb->oy; ptr[66] = cb->oz;          ptr[67] = 0.0f; ptr[68] = cb->dz / 2.0f; ptr[69] = 0.0f; ptr[70] = -1.0f; ptr[71] = 0.0f;
-		ptr[72] = cb->ox;          ptr[73] = cb->oy; ptr[74] = cb->oz + cb->dz; ptr[75] = 0.0f; ptr[76] = 0.0f; ptr[77] = 0.0f; ptr[78] = -1.0f; ptr[79] = 0.0f;
-		ptr[80] = cb->ox + cb->dx; ptr[81] = cb->oy; ptr[82] = cb->oz + cb->dz; ptr[83] = cb->dx / 2.0f; ptr[84] = 0.0f; ptr[85] = 0.0f; ptr[86] = -1.0f; ptr[87] = 0.0f;
-		ptr[88] = cb->ox + cb->dx; ptr[89] = cb->oy; ptr[90] = cb->oz;          ptr[91] = cb->dx / 2.0f; ptr[92] = cb->dz / 2.0f; ptr[93] = 0.0f; ptr[94] = -1.0f; ptr[95] = 0.0f;
+		trilist.AddVertex(cb->ox, cb->oy, cb->oz, 0.0f, cb->dz / 2.0f, 0.0f, -1.0f, 0.0f);
+		trilist.AddVertex(cb->ox, cb->oy, cb->oz + cb->dz, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz + cb->dz, cb->dx / 2.0f, 0.0f, 0.0f, -1.0f, 0.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz, cb->dx / 2.0f, cb->dz / 2.0f, 0.0f, -1.0f, 0.0f);
 
 		// face 3 indexes
-		iptr[12] = (c * 24) + 8; iptr[13] = (c * 24) + 9; iptr[14] = (c * 24) + 10;
-		iptr[15] = (c * 24) + 8; iptr[16] = (c * 24) + 10; iptr[17] = (c * 24) + 11;
+		trilist.AddTriIdices((c * 24) + 8, (c * 24) + 9, (c * 24) + 10);
+		trilist.AddTriIdices((c * 24) + 8, (c * 24) + 10, (c * 24) + 11);
 
 		// face 4 vertices x/y pos z
-		ptr[96] = cb->ox;           ptr[97] = cb->oy + cb->dy;  ptr[98] = cb->oz;           ptr[99] = 0.0f;  ptr[100] = cb->dz / 2.0f; ptr[101] = 0.0f; ptr[102] = 1.0f; ptr[103] = 0.0f;
-		ptr[104] = cb->ox;          ptr[105] = cb->oy + cb->dy; ptr[106] = cb->oz + cb->dz; ptr[107] = 0.0f; ptr[108] = 0.0f; ptr[109] = 0.0f; ptr[110] = 1.0f; ptr[111] = 0.0f;
-		ptr[112] = cb->ox + cb->dx; ptr[113] = cb->oy + cb->dy; ptr[114] = cb->oz + cb->dz; ptr[115] = cb->dx / 2.0f; ptr[116] = 0.0f; ptr[117] = 0.0f; ptr[118] = 1.0f; ptr[119] = 0.0f;
-		ptr[120] = cb->ox + cb->dx; ptr[121] = cb->oy + cb->dy; ptr[122] = cb->oz;          ptr[123] = cb->dx / 2.0f; ptr[124] = cb->dz / 2.0f; ptr[125] = 0.0f; ptr[126] = 1.0f; ptr[127] = 0.0f;
+		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz, 0.0f, cb->dz / 2.0f, 0.0f, 1.0f, 0.0f);
+		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz + cb->dz, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz + cb->dz, cb->dx / 2.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz, cb->dx / 2.0f, cb->dz / 2.0f, 0.0f, 1.0f, 0.0f);
 
 		// face 4 indexes
-		iptr[18] = (c * 24) + 12; iptr[19] = (c * 24) + 14; iptr[20] = (c * 24) + 13;
-		iptr[21] = (c * 24) + 12; iptr[22] = (c * 24) + 15; iptr[23] = (c * 24) + 14;
+		trilist.AddTriIdices((c * 24) + 12, (c * 24) + 14, (c * 24) + 13);
+		trilist.AddTriIdices((c * 24) + 12, (c * 24) + 15, (c * 24) + 14);
 
 		// face 4 vertices x/y pos z
-		ptr[128] = cb->ox; ptr[129] = cb->oy;          ptr[130] = cb->oz;          ptr[131] = 0.0f;          ptr[132] = cb->dz / 2.0f; ptr[133] = -1.0f; ptr[134] = 0.0f; ptr[135] = 0.0f;
-		ptr[136] = cb->ox; ptr[137] = cb->oy;          ptr[138] = cb->oz + cb->dz; ptr[139] = 0.0f;          ptr[140] = 0.0f; ptr[141] = -1.0f; ptr[142] = 0.0f; ptr[143] = 0.0f;
-		ptr[144] = cb->ox; ptr[145] = cb->oy + cb->dy; ptr[146] = cb->oz + cb->dz; ptr[147] = cb->dy / 2.0f; ptr[148] = 0.0f; ptr[149] = -1.0f; ptr[150] = 0.0f; ptr[151] = 0.0f;
-		ptr[152] = cb->ox; ptr[153] = cb->oy + cb->dy; ptr[154] = cb->oz;          ptr[155] = cb->dy / 2.0f; ptr[156] = cb->dz / 2.0f; ptr[157] = -1.0f; ptr[158] = 0.0f; ptr[159] = 0.0f;
+		trilist.AddVertex(cb->ox, cb->oy, cb->oz, 0.0f, cb->dz / 2.0f, -1.0f, 0.0f, 0.0f);
+		trilist.AddVertex(cb->ox, cb->oy, cb->oz + cb->dz, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f);
+		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz + cb->dz, cb->dy / 2.0f, 0.0f, -1.0f, 0.0f, 0.0f);
+		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz, cb->dy / 2.0f, cb->dz / 2.0f, -1.0f, 0.0f, 0.0f);
 
 		// face 4 indexes
-		iptr[24] = (c * 24) + 16; iptr[25] = (c * 24) + 18; iptr[26] = (c * 24) + 17;
-		iptr[27] = (c * 24) + 16; iptr[28] = (c * 24) + 19; iptr[29] = (c * 24) + 18;
+		trilist.AddTriIdices((c * 24) + 16, (c * 24) + 18, (c * 24) + 17);
+		trilist.AddTriIdices((c * 24) + 16, (c * 24) + 19, (c * 24) + 18);
 
 		// face 4 vertices x/y pos z
-		ptr[160] = cb->ox + cb->dx; ptr[161] = cb->oy;          ptr[162] = cb->oz;          ptr[163] = 0.0f;          ptr[164] = cb->dz / 2.0f; ptr[165] = 1.0f; ptr[166] = 0.0f; ptr[167] = 0.0f;
-		ptr[168] = cb->ox + cb->dx; ptr[169] = cb->oy;          ptr[170] = cb->oz + cb->dz; ptr[171] = 0.0f;          ptr[172] = 0.0f; ptr[173] = 1.0f; ptr[174] = 0.0f; ptr[175] = 0.0f;
-		ptr[176] = cb->ox + cb->dx; ptr[177] = cb->oy + cb->dy; ptr[178] = cb->oz + cb->dz; ptr[179] = cb->dy / 2.0f; ptr[180] = 0.0f; ptr[181] = 1.0f; ptr[182] = 0.0f; ptr[183] = 0.0f;
-		ptr[184] = cb->ox + cb->dx; ptr[185] = cb->oy + cb->dy; ptr[186] = cb->oz;          ptr[187] = cb->dy / 2.0f; ptr[188] = cb->dz / 2.0f; ptr[189] = 1.0f; ptr[190] = 0.0f; ptr[191] = 0.0f;
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz, 0.0f, cb->dz / 2.0f, 1.0f, 0.0f, 0.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz + cb->dz, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz + cb->dz, cb->dy / 2.0f, 0.0f, 1.0f, 0.0f, 0.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz, cb->dy / 2.0f, cb->dz / 2.0f, 1.0f, 0.0f, 0.0f);
 
 		// face 4 indexes
-		iptr[30] = (c * 24) + 20; iptr[31] = (c * 24) + 21; iptr[32] = (c * 24) + 22;
-		iptr[33] = (c * 24) + 20; iptr[34] = (c * 24) + 22; iptr[35] = (c * 24) + 23;
+		trilist.AddTriIdices((c * 24) + 20, (c * 24) + 21, (c * 24) + 22);
+		trilist.AddTriIdices((c * 24) + 20, (c * 24) + 22, (c * 24) + 23);
 	}
 
 	glGenBuffers(2, buffers);
-	lpList->VertexArrayBuffer = buffers[0];
-	lpList->IndexArrayBuffer = buffers[1];
-	lpList->NumIndices = IndexDataSize;
+	//trilist.VertexArrayBuffer = buffers[0];
+	//trilist.IndexArrayBuffer = buffers[1];
+	trilist.SetGLBufferIds(buffers[0], buffers[1]);
+	//lpList->NumIndices = IndexDataSize;
 
-	glBindBuffer(GL_ARRAY_BUFFER, lpList->VertexArrayBuffer);
-	glBufferData(GL_ARRAY_BUFFER, VertDataSize * sizeof(float), lpList->Vertices, GL_STATIC_DRAW);
+	//glBindBuffer(GL_ARRAY_BUFFER, lpList->VertexArrayBuffer);
+	//glBufferData(GL_ARRAY_BUFFER, VertDataSize * sizeof(float), lpList->Vertices, GL_STATIC_DRAW);
 
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, lpList->IndexArrayBuffer);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, IndexDataSize * sizeof(unsigned int), lpList->Indices, GL_STATIC_DRAW);
-}
+	//glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, lpList->IndexArrayBuffer);
+	//glBufferData(GL_ELEMENT_ARRAY_BUFFER, IndexDataSize * sizeof(unsigned int), lpList->Indices, GL_STATIC_DRAW);
+	trilist.BindArrays();
 
-//CUBE* BuildFloorCubesAndIndexedList(INDEXED_LIST* lpList, unsigned int* nCubes)
-//{
-//	CUBE* lpCubes = (CUBE*)malloc(20 * 20 * sizeof(CUBE));
-//	memset(lpCubes, 0, 20 * 20 * sizeof(CUBE));
-//	unsigned int cubeCtr = 0;
-//	for (float fx = -50.0f; fx < 50.0f; fx += 5.0f)
-//	{
-//		for (float fy = -50.0f; fy < 50.0f; fy += 5.0f)
-//		{
-//			lpCubes[cubeCtr].ox = fx;
-//			lpCubes[cubeCtr].oy = -1.0f;
-//			lpCubes[cubeCtr].oz = fy;
-//			lpCubes[cubeCtr].dx = 5.0f;
-//			lpCubes[cubeCtr].dy = 1.0f;
-//			lpCubes[cubeCtr].dz = 5.0f;
-//			cubeCtr++;
-//		}
-//	}
-//	CreateCubes(20 * 20, lpCubes, lpList);
-//	*nCubes = 20 * 20;
-//	return lpCubes;
-//}
-
-/*
-void SetupGeometryX()
-{
-	GLuint buffers[2];
-
-	g_ctx.idxList[0].Vertices = (float*)malloc(100 * 100 * 4 * 8 * sizeof(float));
-	memset(g_ctx.idxList[0].Vertices, 0, 100 * 100 * 4 * 8 * sizeof(float));
-	g_ctx.idxList[0].Indices = (unsigned int*)malloc(100 * 100 * 6 * sizeof(unsigned int));
-	memset(g_ctx.idxList[0].Indices, 0, 100 * 100 * 6 * sizeof(unsigned int));
-	long fdx = 0;
-	long vidx = 0;
-	long iidx = 0;
-	for (int fx = 0; fx < 100; fx++)
-	{
-		for (int fy = 0; fy < 100; fy++)
-		{			
-			g_ctx.idxList[0].Vertices[fdx++] = (float)fx - 50.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 0.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = (float)fy - 50.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 0.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 0.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 0.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = -1.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 0.0f;
-
-			g_ctx.idxList[0].Vertices[fdx++] = (float)fx - 50.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 0.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = (float)fy - 49.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 0.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 1.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 0.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = -1.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 0.0f;
-
-			g_ctx.idxList[0].Vertices[fdx++] = (float)fx - 49.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 0.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = (float)fy - 49.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 1.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 1.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 0.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = -1.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 0.0f;
-
-			g_ctx.idxList[0].Vertices[fdx++] = (float)fx - 49.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 0.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = (float)fy - 50.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 1.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 0.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 0.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = -1.0f;
-			g_ctx.idxList[0].Vertices[fdx++] = 0.0f;
-
-			g_ctx.idxList[0].Indices[iidx++] = vidx;
-			g_ctx.idxList[0].Indices[iidx++] = vidx + 1;
-			g_ctx.idxList[0].Indices[iidx++] = vidx + 2;
-			g_ctx.idxList[0].Indices[iidx++] = vidx;
-			g_ctx.idxList[0].Indices[iidx++] = vidx + 2;
-			g_ctx.idxList[0].Indices[iidx++] = vidx + 3;
-
-			vidx += 4;
-		}
-	}
-
-	glGenBuffers(2, buffers);
-	g_ctx.idxList[0].VertexArrayBuffer = buffers[0];
-	g_ctx.idxList[0].IndexArrayBuffer = buffers[1];
-	g_ctx.idxList[0].NumIndices = 100 * 100 * 6;
-
-	glBindBuffer(GL_ARRAY_BUFFER, g_ctx.idxList[0].VertexArrayBuffer);
-	glBufferData(GL_ARRAY_BUFFER, 100 * 100 * 4 * 8 * sizeof(float), g_ctx.idxList[0].Vertices, GL_STATIC_DRAW);
-
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_ctx.idxList[0].IndexArrayBuffer);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, 100 * 100 * 6 * sizeof(unsigned int), g_ctx.idxList[0].Indices, GL_STATIC_DRAW);
-}
-*/
-
-BOOL SetupShaders(SHADER_PROGRAM_CONTEXT *sctx, const char* vtxss, const char* frgss)
-{
-	GLint success = 0;
-
-	sctx->ShaderProgram = glCreateProgram();
-
-	sctx->VertexShader = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(sctx->VertexShader, 1, &vtxss, NULL);
-	glCompileShader(sctx->VertexShader);
-	glGetShaderiv(sctx->VertexShader, GL_COMPILE_STATUS, &success);
-	if (!success) {
-		cout << "ERROR: Failed to compile vertex shader";
-		return FALSE;
-	}
-
-	sctx->FragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(sctx->FragmentShader, 1, &frgss, NULL);
-	glCompileShader(sctx->FragmentShader);
-	glGetShaderiv(sctx->FragmentShader, GL_COMPILE_STATUS, &success);
-	if (!success) {
-		cout << "ERROR: Failed to compile fragment shader";
-		return FALSE;
-	}
-
-	glAttachShader(sctx->ShaderProgram, sctx->VertexShader);
-	glAttachShader(sctx->ShaderProgram, sctx->FragmentShader);
-	glLinkProgram(sctx->ShaderProgram);
-
-	glGetProgramiv(sctx->ShaderProgram, GL_LINK_STATUS, &success);
-	if (!success) {
-		cout << "ERROR: Failed to link shader program" << endl;
-		return FALSE;
-	}
-
-	glValidateProgram(sctx->ShaderProgram);
-	glGetProgramiv(sctx->ShaderProgram, GL_VALIDATE_STATUS, &success);
-	if (!success) {
-		cout << "ERROR: Failed to validate shader program" << endl;
-		return FALSE;
-	}
-
-	glUseProgram(sctx->ShaderProgram);
-
-	DumpGlErrors("SetupShaders");
-
-	return TRUE;
+	return trilist;
 }
 
 void SetupTextures(GLCONTEXT* lpGlContext)
@@ -754,33 +861,6 @@ bool InitializePhysx()
 
 	gMaterial = mPhysics->createMaterial(0.5f, 0.5f, 0.6f);
 
-	// ground plane
-	//groundPlane = physx::PxCreatePlane(*mPhysics, physx::PxPlane(0, 1, 0, 0), *gMaterial);
-	//gScene->addActor(*groundPlane);
-
-	//physx::PxShape* shape = mPhysics->createShape(physx::PxSphereGeometry(1), *gMaterial);
-	//physx::PxRigidDynamic* body = mPhysics->createRigidDynamic(physx::PxTransform(physx::PxVec3(0, 40, 0)));
-	//body->attachShape(*shape);
-	//physx::PxRigidBodyExt::updateMassAndInertia(*body, 10.0f);
-	//gScene->addActor(*body);
-
-	/*
-	physx::PxVec3 position(0, 40, 0);
-	//float radius = 1.0f;
-	//float halfHeight = 2.0f;
-	aCapsuleActor = mPhysics->createRigidDynamic(physx::PxTransform(position));
-	// transform that rotates 90 deg about the z axis
-	//physx::PxTransform relativePose(physx::PxQuat(physx::PxHalfPi, physx::PxVec3(0, 0, 1)));
-	//aCapsuleShape = physx::PxRigidActorExt::createExclusiveShape(*aCapsuleActor,
-		//physx::PxCapsuleGeometry(radius, halfHeight), *gMaterial);
-	aCapsuleShape = physx::PxRigidActorExt::createExclusiveShape(*aCapsuleActor,
-		physx::PxBoxGeometry(3, 3, 3), *gMaterial);
-	//aCapsuleShape->setLocalPose(relativePose);
-	physx::PxRigidBodyExt::updateMassAndInertia(*aCapsuleActor, 10.0f);
-	gScene->addActor(*aCapsuleActor);
-	aCapsuleShape->release();
-	*/
-
 	cmanager = PxCreateControllerManager(*gScene);
 	physx::PxCapsuleControllerDesc desc;
 	desc.height = 4.0f;
@@ -792,21 +872,19 @@ bool InitializePhysx()
 	return true;
 }
 
-physx::PxMat44 PhysxSimulate(CUBE* pCube, BULLET_STRUCT* bullets)
+physx::PxMat44 PhysxSimulate(physx::PxRigidDynamic* pFallingCubeDynamic, BULLET_STRUCT* bullets)
 {
 	physx::PxShape* shapes[1];
 	gScene->simulate(1.0f / 60.0f); // 60th of a sec (60 fps)
 	gScene->fetchResults(true);
-	physx::PxU32 n = pCube->lpPxRigidDynamic->getNbShapes();
-	pCube->lpPxRigidDynamic->getShapes(shapes, n);
-	//physx::PxGeometryHolder gh = shapes[0]->getGeometry();
-	const physx::PxMat44 shapePose(physx::PxShapeExt::getGlobalPose(*shapes[0], *pCube->lpPxRigidDynamic));
+	physx::PxU32 n = pFallingCubeDynamic->getNbShapes();
+	pFallingCubeDynamic->getShapes(shapes, n);
+	const physx::PxMat44 shapePose(physx::PxShapeExt::getGlobalPose(*shapes[0], *pFallingCubeDynamic));
 
 	for (int b = 0; b < 10; b++) {
 		if (bullets[b].lpBulletDyn)
 		{
 			bullets[b].lpBulletDyn->getShapes(shapes, 1);
-			//gh = shapes[0]->getGeometry();
 			bullets[b].pose = physx::PxShapeExt::getGlobalPose(*shapes[0], *bullets[b].lpBulletDyn);
 		}
 	}
@@ -899,34 +977,58 @@ void FreeGlFont(GLCONTEXT *lpContext)
 	glDeleteLists(lpContext->fontBase, 96);
 }
 
+IndexedTriangleList LoadAndProcessGeometryFile()
+{
+	unsigned int jsonCubeNum = 0;
+	CUBE* jsonCubes = nullptr;
+
+	cout << "loading geometry file" << endl;
+	jsonCubes = LoadGeometryJson("mz.json", &jsonCubeNum);
+	IndexedTriangleList triList = CreateCubes(jsonCubeNum, jsonCubes);
+	for (unsigned int c = 0; c < jsonCubeNum; c++) {
+		AddStaticActor(triList,
+			physx::PxVec3(
+				jsonCubes[c].ox + (jsonCubes[c].dx / 2.0f),
+				jsonCubes[c].oy + (jsonCubes[c].dy / 2.0f),
+				jsonCubes[c].oz + (jsonCubes[c].dz / 2.0f)
+			),
+			physx::PxVec3(jsonCubes[c].dx / 2.0f, jsonCubes[c].dy / 2.0f, jsonCubes[c].dz / 2.0f));
+	}
+	if (jsonCubes) free(jsonCubes);
+	return triList;
+}
+
+IndexedTriangleList CreateBullets()
+{
+	CUBE bulletCube = { -0.5, -0.5, -0.5, 1.0f, 1.0f, 1.0f };
+	return CreateCubes(1, &bulletCube);
+}
+
+IndexedTriangleList CreateFallingCube()
+{
+	CUBE fallingCube = { -3.0f, -3.0f, -3.0f, 6.0f, 6.0f, 6.0f };
+
+	IndexedTriangleList triList = CreateCubes(1, &fallingCube);
+	AddDynamicActor(triList, physx::PxVec3(0, 40, 0), physx::PxVec3(3, 3, 3));
+
+	return triList;
+}
+
 DWORD WINAPI RenderThread(void* parm)
 {
 	HWND hWnd = (HWND)parm;
 	HDC hdc = nullptr;
 	HGLRC hglrc = nullptr;
 	RECT clientRect = { 0 };
-	//GLuint gWorldMatrixLoc = 0;
-	GLuint gModelMatrixLoc = 0;
-	GLuint gViewMatrixLoc = 0;
-	GLuint gProjMatrixLoc = 0;
-	GLuint gPlayerPosLoc = 0;
-	//GLuint gLookDirVecLoc = 0;
-	GLuint gTextureLoc = 0;
 	LARGE_INTEGER perfFreq = { 0 };
 	LARGE_INTEGER perfCount = { 0 };
 	LARGE_INTEGER perfCountEnd = { 0 };
 	LONGLONG lastCount = 0;
 	float FramesPerSecond = 0.0f;
 	float ctsPerFrame = 0.0f; // at 60 fps
-	CUBE fallingCube = { -3.0f, -3.0f, -3.0f, 6.0f, 6.0f, 6.0f, nullptr, nullptr };
-	//CUBE* lpFloorCubes = nullptr;
-	//unsigned int nFloorCubes = 0;
 	float prc = 0.0f;
-	CUBE* jsonCubes = nullptr;
-	unsigned int jsonCubeNum = 0;
 	GLCONTEXT lpContext;
 	BULLET_STRUCT bullets[10];
-	CUBE bulletCube = { -0.5, -0.5, -0.5, 1.0f, 1.0f, 1.0f, nullptr, nullptr };
 	unsigned int nextbullet = 0;
 	unsigned int bulletWait = 0;
 	char TextBuffer[80];
@@ -958,55 +1060,42 @@ DWORD WINAPI RenderThread(void* parm)
 	SetupRenderingContext();
 
 	memset(&lpContext, 0, sizeof(GLCONTEXT));
-	lpContext.lpIdxList = (INDEXED_LIST*)malloc(3 * sizeof(INDEXED_LIST));
-	memset(lpContext.lpIdxList, 0, 3 * sizeof(INDEXED_LIST));
-	lpContext.NumIdxList = 3;
 
-	cout << "loading geometry file" << endl;
-	jsonCubes = LoadGeometryJson("mz.json", &jsonCubeNum);
-	CreateCubes(jsonCubeNum, jsonCubes, &lpContext.lpIdxList[0]);
-	for (unsigned int c = 0; c < jsonCubeNum; c++) {
-		AddStaticActor(&jsonCubes[c]);
-	}
-	cout << "geometry file stuff done" << endl;
+	lpContext.lpIdtFile = new IndexedTriangleList(LoadAndProcessGeometryFile());
+	lpContext.lpIdtFallingCube = new IndexedTriangleList(CreateFallingCube());
+	lpContext.lpIdtBulletBox = new IndexedTriangleList(CreateBullets());
 
-	CreateCubes(1, &bulletCube, &lpContext.lpIdxList[2]);
-
-	CreateCubes(1, &fallingCube, &lpContext.lpIdxList[1]);
-	AddDynamicActor(&fallingCube, physx::PxVec3(0, 40, 0));
-
-	SetupShaders(&lpContext.screen, g_VtxShaderScreen, g_FrgShaderScreen);
-	SetupShaders(&lpContext.world, g_VertexShaderSource, g_FragmentShaderSource);
 	SetupTextures(&lpContext);
 
-	//gWorldMatrixLoc = glGetUniformLocation(g_ctx.ShaderProgram, "gWorld");
-	gModelMatrixLoc = glGetUniformLocation(lpContext.world.ShaderProgram, "gModelMatrix");
-	gViewMatrixLoc = glGetUniformLocation(lpContext.world.ShaderProgram, "gViewMatrix");
-	gProjMatrixLoc = glGetUniformLocation(lpContext.world.ShaderProgram, "gProjMatrix");
-	gPlayerPosLoc = glGetUniformLocation(lpContext.world.ShaderProgram, "gPlayerPos");
+	lpContext.lpWorldShader = new WorldShaderProgramContext();
+	lpContext.lpScreenShader = new ScreenShaderProgramContext();
 
+	// need to set this as current to set projection matrix
+	lpContext.lpWorldShader->SetAsCurrent();
+
+	// projection matrix
 	GetClientRect(hWnd, &clientRect);
 	glm::mat4 proj = glm::perspective(45.0f,
 		(float)(clientRect.right - clientRect.left) / (float)(clientRect.bottom - clientRect.top),
 		0.1f, 1000.0f);
-	glUniformMatrix4fv(gProjMatrixLoc, 1, GL_FALSE, &proj[0][0]);
+	
+	lpContext.lpWorldShader->SetProjMatrix(&proj[0][0]);
 
+	// set the viewport
 	glViewport(0, 0, clientRect.right - clientRect.left, clientRect.bottom - clientRect.top);
 
-	//gLookDirVecLoc = glGetUniformLocation(lpContext.ShaderProgram, "gLookDirVec");
-	gTextureLoc = glGetUniformLocation(lpContext.world.ShaderProgram, "texSampler");
-	glUniform1i(gTextureLoc, 0);
+	// set the texture
+	lpContext.lpWorldShader->SetTexture(0);
 
 	while (TRUE) {
 
 		QueryPerformanceCounter(&perfCount);
-		//cout << "\r" << (int)FramesPerSecond << " fps; free time " << (int)prc << "%";
 		FramesPerSecond = (float)perfFreq.QuadPart / (float)(perfCount.QuadPart - lastCount);
 		lastCount = perfCount.QuadPart;
 
 		if (WAIT_OBJECT_0 != WaitForSingleObject(hStopEvent, 0))
 		{
-			glUseProgram(lpContext.world.ShaderProgram);
+			lpContext.lpWorldShader->SetAsCurrent();
 
 			// get user movement based on keys
 			float mx = 0, my = 0, mz = 0;
@@ -1024,7 +1113,7 @@ DWORD WINAPI RenderThread(void* parm)
 			//}
 
 			// simulate physx
-			physx::PxMat44 blockPose = PhysxSimulate(&fallingCube, bullets);
+			physx::PxMat44 blockPose = PhysxSimulate(lpContext.lpIdtFallingCube->get_RigidDynamic(), bullets);
 
 			// get the user location after simulation
 			physx::PxExtendedVec3 ppos = pChar->getPosition();
@@ -1033,7 +1122,7 @@ DWORD WINAPI RenderThread(void* parm)
 			g_ez = (float)ppos.z;
 
 			glm::vec3 playerPos(g_ex, g_ey, g_ez);
-			glUniform3fv(gPlayerPosLoc, 1, &playerPos[0]);
+			lpContext.lpWorldShader->SetPlayerPos(&playerPos[0]);
 
 			if (bulletWait > 0) {
 				bulletWait++;
@@ -1061,24 +1150,27 @@ DWORD WINAPI RenderThread(void* parm)
 
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-			// projection matrix
-			glm::mat4 r1 = glm::rotate(DEG2RAD(g_az), glm::vec3(0.0f, 1.0f, 0.0f));
-			glm::mat4 r2 = glm::rotate(DEG2RAD(g_el), glm::vec3(cosf(DEG2RAD(g_az)), 0.0f, sinf(DEG2RAD(g_az))));
-			glm::mat4 t = glm::translate(glm::vec3(-g_ex, -g_ey, -g_ez));
-			glm::mat4 view = r1 * r2 * t;
-			glUniformMatrix4fv(gViewMatrixLoc, 1, GL_FALSE, &view[0][0]);
-
-			// model matrix is identity at this point
-			glm::mat4 ModelMatrix(1.0f);
-			glUniformMatrix4fv(gModelMatrixLoc, 1, GL_FALSE, &ModelMatrix[0][0]);
-
 			// set the active texture
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, lpContext.TexId);
 
+			// model matrix
+			glm::mat4 ModelMatrix(1.0f);
+			lpContext.lpWorldShader->SetModelMatrix(&ModelMatrix[0][0]);
+			glm::mat3 normModelMatrix = glm::inverse(glm::transpose(glm::mat3(ModelMatrix)));
+			lpContext.lpWorldShader->SetNormalModelMatrix(&normModelMatrix[0][0]);
+
+			// view matrix
+			glm::mat4 r1 = glm::rotate(DEG2RAD(g_az), glm::vec3(0.0f, 1.0f, 0.0f));
+			glm::mat4 r2 = glm::rotate(DEG2RAD(g_el), glm::vec3(cosf(DEG2RAD(g_az)), 0.0f, sinf(DEG2RAD(g_az))));
+			glm::mat4 t = glm::translate(glm::vec3(-g_ex, -g_ey, -g_ez));
+			glm::mat4 ViewMatrix = r1 * r2 * t;
+			lpContext.lpWorldShader->SetViewMatrix(&ViewMatrix[0][0]);
+			glm::mat3 normViewMatrix = glm::inverse(glm::transpose(glm::mat3(ViewMatrix)));
+			lpContext.lpWorldShader->SetNormalViewMatrix(&normViewMatrix[0][0]);
+
 			// BEGIN draw the json cubes
-			glBindBuffer(GL_ARRAY_BUFFER, lpContext.lpIdxList[0].VertexArrayBuffer);
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, lpContext.lpIdxList[0].IndexArrayBuffer);
+			lpContext.lpIdtFile->BindBuffers();			
 
 			glEnableVertexAttribArray(0);
 			glEnableVertexAttribArray(1);
@@ -1088,18 +1180,24 @@ DWORD WINAPI RenderThread(void* parm)
 			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
 			glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(5 * sizeof(float)));
 
-			glDrawElements(GL_TRIANGLES, lpContext.lpIdxList[0].NumIndices, GL_UNSIGNED_INT, 0);
+			lpContext.lpIdtFile->DrawElements();
 
 			glDisableVertexAttribArray(0);
 			glDisableVertexAttribArray(1);
 			glDisableVertexAttribArray(2);
 			// END draw the json cubes
 
-			// BEGIN draw the falling block
-			glUniformMatrix4fv(gModelMatrixLoc, 1, GL_FALSE, &blockPose[0][0]);
+			// model matrix (view matrix is the same)
+			lpContext.lpWorldShader->SetModelMatrix(&blockPose[0][0]);
+			glm::mat3 glmNormModelMatrix;
+			glmNormModelMatrix[0][0] = blockPose[0][0]; glmNormModelMatrix[0][1] = blockPose[0][1]; glmNormModelMatrix[0][2] = blockPose[0][2];
+			glmNormModelMatrix[1][0] = blockPose[1][0]; glmNormModelMatrix[1][1] = blockPose[1][1]; glmNormModelMatrix[1][2] = blockPose[1][2];
+			glmNormModelMatrix[2][0] = blockPose[2][0]; glmNormModelMatrix[2][1] = blockPose[2][1]; glmNormModelMatrix[2][2] = blockPose[2][2];
+			normModelMatrix = glm::inverse(glm::transpose(glmNormModelMatrix));
+			lpContext.lpWorldShader->SetNormalModelMatrix(&normModelMatrix[0][0]);
 
-			glBindBuffer(GL_ARRAY_BUFFER, lpContext.lpIdxList[1].VertexArrayBuffer);
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, lpContext.lpIdxList[1].IndexArrayBuffer);
+			// BEGIN draw the falling block
+			lpContext.lpIdtFallingCube->BindBuffers();
 
 			glEnableVertexAttribArray(0);
 			glEnableVertexAttribArray(1);
@@ -1109,7 +1207,7 @@ DWORD WINAPI RenderThread(void* parm)
 			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
 			glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(5 * sizeof(float)));
 
-			glDrawElements(GL_TRIANGLES, lpContext.lpIdxList[1].NumIndices, GL_UNSIGNED_INT, 0);
+			lpContext.lpIdtFallingCube->DrawElements();
 
 			glDisableVertexAttribArray(0);
 			glDisableVertexAttribArray(1);
@@ -1117,8 +1215,7 @@ DWORD WINAPI RenderThread(void* parm)
 			// END draw the falling block
 
 			// draw the bullets
-			glBindBuffer(GL_ARRAY_BUFFER, lpContext.lpIdxList[2].VertexArrayBuffer);
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, lpContext.lpIdxList[2].IndexArrayBuffer);
+			lpContext.lpIdtBulletBox->BindBuffers();
 
 			glEnableVertexAttribArray(0);
 			glEnableVertexAttribArray(1);
@@ -1130,8 +1227,16 @@ DWORD WINAPI RenderThread(void* parm)
 			for (int b = 0; b < 10; b++) {
 				if (bullets[b].lpBulletDyn) {
 					// draw idxlist 2
-					glUniformMatrix4fv(gModelMatrixLoc, 1, GL_FALSE, &bullets[b].pose[0][0]);
-					glDrawElements(GL_TRIANGLES, lpContext.lpIdxList[2].NumIndices, GL_UNSIGNED_INT, 0);
+
+					// model matrix (view matrix is the same)
+					lpContext.lpWorldShader->SetModelMatrix(&bullets[b].pose[0][0]);
+					glmNormModelMatrix[0][0] = bullets[b].pose[0][0]; glmNormModelMatrix[0][1] = bullets[b].pose[0][1]; glmNormModelMatrix[0][2] = bullets[b].pose[0][2];
+					glmNormModelMatrix[1][0] = bullets[b].pose[1][0]; glmNormModelMatrix[1][1] = bullets[b].pose[1][1]; glmNormModelMatrix[1][2] = bullets[b].pose[1][2];
+					glmNormModelMatrix[2][0] = bullets[b].pose[2][0]; glmNormModelMatrix[2][1] = bullets[b].pose[2][1]; glmNormModelMatrix[2][2] = bullets[b].pose[2][2];
+					normModelMatrix = glm::inverse(glm::transpose(glmNormModelMatrix));
+					lpContext.lpWorldShader->SetNormalModelMatrix(&normModelMatrix[0][0]);
+
+					lpContext.lpIdtBulletBox->DrawElements();
 				}
 			}
 			glDisableVertexAttribArray(0);
@@ -1142,40 +1247,39 @@ DWORD WINAPI RenderThread(void* parm)
 			glBindBuffer(GL_ARRAY_BUFFER, 0);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
+			// here we change the shader program
+
 			GLfloat crosshair_vertices[8] = {
 				-0.05f, 0.0f, 0.05f, 0.0f,
 				0.0f, -0.1f, 0.0f, 0.1f
 			};
 			GLuint chvbo = 0;
 			GLuint chvao = 0;
-			GLuint pos = 0;
 			glGenVertexArrays(1, &chvao);
 			glBindVertexArray(chvao);
 			glGenBuffers(1, &chvbo);
 			glBindBuffer(GL_ARRAY_BUFFER, chvbo);
 			glBufferData(GL_ARRAY_BUFFER, sizeof(crosshair_vertices), crosshair_vertices, GL_STATIC_DRAW);
-			glUseProgram(lpContext.screen.ShaderProgram);
-			pos = glGetAttribLocation(lpContext.screen.ShaderProgram, "position");
-			glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, 0, 0);
-			glEnableVertexAttribArray(pos);
+			lpContext.lpScreenShader->SetAsCurrent();
+			glVertexAttribPointer(lpContext.lpScreenShader->getPos(), 2, GL_FLOAT, GL_FALSE, 0, 0);
+			glEnableVertexAttribArray(lpContext.lpScreenShader->getPos());
 			glDrawArrays(GL_LINES, 0, 4);
 
 			for (int i = 0; i < 20; i++) {
 				const char* thisLine = sb.GetString(i);
 				if (thisLine) {
-					glRasterPos2f(-0.99, 0.95 - (i * 0.05));
+					glRasterPos2f(-0.99f, 0.95f - ((float)i * 0.05f));
 					glPushAttrib(GL_LIST_BIT);
 					glListBase(lpContext.fontBase - 32);
-					glCallLists(strlen(thisLine), GL_UNSIGNED_BYTE, thisLine);
+					glCallLists((GLsizei)strlen(thisLine), GL_UNSIGNED_BYTE, thisLine);
 					glPopAttrib();
 				}
 			}
 			glRasterPos2f(-0.99f, -0.99f);
 			glPushAttrib(GL_LIST_BIT);
 			glListBase(lpContext.fontBase - 32);
-			glCallLists(strlen(TextBuffer), GL_UNSIGNED_BYTE, TextBuffer);
+			glCallLists((GLsizei)strlen(TextBuffer), GL_UNSIGNED_BYTE, TextBuffer);
 			glPopAttrib();
-
 
 			SwapBuffers(hdc);
 		}
@@ -1200,39 +1304,25 @@ DWORD WINAPI RenderThread(void* parm)
 
 	FreeGlFont(&lpContext);
 
-	glDeleteShader(lpContext.world.VertexShader);
-	glDeleteShader(lpContext.world.FragmentShader);
-	glDeleteProgram(lpContext.world.ShaderProgram);
-	glDeleteShader(lpContext.screen.VertexShader);
-	glDeleteShader(lpContext.screen.FragmentShader);
-	glDeleteProgram(lpContext.screen.ShaderProgram);
+	lpContext.lpWorldShader->FreeResources();
+	delete lpContext.lpWorldShader;
+	lpContext.lpScreenShader->FreeResources();
+	delete lpContext.lpScreenShader;
+
 	glDeleteTextures(1, &lpContext.TexId);
-	for (unsigned int i = 0; i < lpContext.NumIdxList; i++) {
-		glDeleteBuffers(1, &lpContext.lpIdxList[i].VertexArrayBuffer);
-		glDeleteBuffers(1, &lpContext.lpIdxList[i].IndexArrayBuffer);
-		free(lpContext.lpIdxList[i].Vertices);
-		free(lpContext.lpIdxList[i].Indices);
-	}
+
+	lpContext.lpIdtFile->FreeResources();
+	delete lpContext.lpIdtFile;
+	lpContext.lpIdtFallingCube->FreeResources();
+	delete lpContext.lpIdtFallingCube;
+	lpContext.lpIdtBulletBox->FreeResources();
+	delete lpContext.lpIdtBulletBox;
 
 	if (hglrc) {
 		wglMakeCurrent(hdc, nullptr);
 		wglDeleteContext(hglrc);
 	}
 	if (hdc) ReleaseDC(hWnd, hdc);
-
-	if (jsonCubes)
-	{
-		for (unsigned int c = 0; c < jsonCubeNum; c++) {
-			ReleaseStaticActorCube(&jsonCubes[c]);
-		}
-		free(jsonCubes);
-	}
-
-	//for (unsigned int c = 0; c < nFloorCubes; c++) {
-		//ReleaseStaticActorCube(&lpFloorCubes[c]);
-	//}
-
-	ReleaseDynamicActorCube(&fallingCube);
 
 	DisposePhysx();
 
@@ -1400,9 +1490,11 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	ChangeDisplaySettings(&dmScreenSettings, CDS_FULLSCREEN);
 
 	HWND hwnd = CreateWindowEx(WS_EX_APPWINDOW, szWindowClass, szTitle, 
-		WS_POPUP, //WS_OVERLAPPEDWINDOW^WS_THICKFRAME,
-		0, 0, dmScreenSettings.dmPelsWidth, dmScreenSettings.dmPelsHeight, 
-	   nullptr, nullptr, hInstance, nullptr);
+		//WS_POPUP, //WS_OVERLAPPEDWINDOW^WS_THICKFRAME,
+		//0, 0, dmScreenSettings.dmPelsWidth, dmScreenSettings.dmPelsHeight, 
+		WS_OVERLAPPEDWINDOW^WS_THICKFRAME,
+		0, 0, 640, 480,
+		nullptr, nullptr, hInstance, nullptr);
 
    if (!hwnd)
    {
