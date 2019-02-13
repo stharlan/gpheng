@@ -322,45 +322,35 @@ const char* g_VertexShaderSource =
 "uniform mat4 gProjMatrix;"
 "uniform mat3 gNormViewMatrix;"
 "uniform mat3 gNormModelMatrix;"
-"out vec3 fragVert;"
+"uniform vec3 gPlayerPos;"
 "out vec2 fragTexCoord;"
-"out vec3 normalEye;"
+"out vec3 Position;"
+"out vec3 Normal;"
+"out vec3 LightPos;"
 "void main() {"
+"  Normal = normalize(gNormViewMatrix * (gNormModelMatrix * vNormal));"
+"  Position = vec3(gViewMatrix * (gModelMatrix * vec4(vPosition, 1.0)));"
+"  LightPos = vec3(gViewMatrix * (gModelMatrix * vec4(gPlayerPos, 1.0)));"
 "  gl_Position = gProjMatrix * (gViewMatrix * (gModelMatrix * vec4(vPosition, 1.0)));"
 "  fragTexCoord = vTexCoord;"
-"  normalEye = gNormViewMatrix * (gNormModelMatrix * vNormal);"
-"  fragVert = vPosition;" // this should be calculated here and not passed on
 "}";
 
 const char* g_FragmentShaderSource =
 "#version 400\n"
+"in vec3 Position;"
+"in vec3 Normal;"
+"in vec3 LightPos;"
 "in vec2 fragTexCoord;"
-//"in vec3 fragNormal;"
-"in vec3 normalEye;"
-"in vec3 fragVert;"
-"uniform mat4 gModelMatrix;"
-"uniform mat4 gViewMatrix;"
-"uniform vec3 gPlayerPos;"
 "uniform sampler2D texSampler;"
 "out vec4 frag_color;"
 "void main() {"
-//"  mat3 normalMMatrix = transpose(inverse(mat3(gModelMatrix)));"
-//"  mat3 normalVMatrix = transpose(inverse(mat3(gViewMatrix)));"
-//"  vec3 normal = normalize(normalVMatrix * (normalMMatrix * fragNormal));"
-//calculate the location of this fragment (pixel) in world coordinates
-"  vec3 fragPosition = vec3(gViewMatrix * (gModelMatrix * vec4(fragVert, 1)));"
-//calculate the vector from this pixels surface to the light source
-"  vec3 gPlayerPosX = vec3(gViewMatrix * (gModelMatrix * vec4(gPlayerPos, 1)));"
-"  vec3 surfaceToLight = gPlayerPosX - fragPosition;"
-//calculate the cosine of the angle of incidence
-"  float brightness = dot(normalEye, surfaceToLight) / (length(surfaceToLight) * length(normalEye));"
-"  brightness = clamp(brightness, 0, 1);"
-//calculate final color of the pixel, based on:
-// 1. The angle of incidence: brightness
-// 2. The color/intensities of the light: light.intensities
-// 3. The texture and texture coord: texture(tex, fragTexCoord)
-"  vec4 surfaceColor = texture2D(texSampler, fragTexCoord.xy);"
-"  frag_color = vec4(brightness * vec3(1,1,1) * surfaceColor.rgb, surfaceColor.a);"
+"  vec3 n = normalize(Normal);"
+"  vec3 s = normalize(LightPos - Position);"
+"  vec3 v = normalize(-Position);"
+"  vec3 r = reflect(-s, n);"
+//"  vec3 result = vec3(1,1,1) * (vec3(0.5,0.5,0.5) + vec3(0.7,0.7,0.7) * max(dot(s, n),0.0) + vec3(1,1,1) * pow(max(dot(r,v),0.0), 1.0f));"
+"  vec3 result = vec3(.9,.9,.8) * (vec3(0.5,0.5,0.6) + vec3(0.7,0.7,0.7) * max(dot(s, n),0.0));"
+"  frag_color = texture2D(texSampler, fragTexCoord.xy) * vec4(result, 1.0);"
 "}";
 
 class WorldShaderProgramContext : public ShaderProgramContext
@@ -377,8 +367,8 @@ public:
 		this->gViewMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gViewMatrix");
 		this->gProjMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gProjMatrix");
 		this->gPlayerPosLoc = glGetUniformLocation(this->ShaderProgram, "gPlayerPos");
-		this->gNormModelMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gNormViewMatrix");
-		this->gNormViewMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gNormModelMatrix");
+		this->gNormModelMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gNormModelMatrix");
+		this->gNormViewMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gNormViewMatrix");
 		this->gTextureLoc = glGetUniformLocation(this->ShaderProgram, "texSampler");
 	}
 
