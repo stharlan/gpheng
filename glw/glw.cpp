@@ -12,11 +12,13 @@
 #pragma comment(lib, "PhysXCharacterKinematic_static_64.lib")
 #pragma comment(lib, "PhysXExtensions_static_64.lib")
 
-#define MAX_LOADSTRING 100
-#define F1 1.0f
-#define F0 0.0f
-
 using namespace std;
+
+typedef BOOL(*PFNwglSwapIntervalEXT)(int interval);
+typedef int(*PFNwglGetSwapIntervalEXT)(void);
+
+PFNwglSwapIntervalEXT wglSwapIntervalEXT;
+PFNwglGetSwapIntervalEXT wglGetSwapIntervalEXT;
 
 PFNGLGENBUFFERSPROC glGenBuffers;
 PFNGLBINDBUFFERPROC glBindBuffer;
@@ -49,242 +51,6 @@ PFNGLTEXSTORAGE2DPROC glTexStorage2D;
 PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
 PFNGLUNIFORMMATRIX3FVPROC glUniformMatrix3fv;
 
-typedef struct {
-	physx::PxRigidDynamic* lpBulletDyn;
-	physx::PxMat44 pose;
-} BULLET_STRUCT;
-
-typedef struct {
-	float ox;
-	float oy;
-	float oz;
-	float dx;
-	float dy;
-	float dz;
-} CUBE;
-
-void DumpGlErrors(const char* FunctionName)
-{
-	GLenum err;
-	while ((err = glGetError()) != GL_NO_ERROR) {
-		cout << "GL ERROR: " << FunctionName << ": " << hex << err << dec << endl;
-	}
-}
-
-class IndexedTriangleList
-{
-public:
-	IndexedTriangleList() { }
-	IndexedTriangleList(const IndexedTriangleList& p) {
-		this->VertexArrayBuffer = p.VertexArrayBuffer;
-		this->IndexArrayBuffer = p.IndexArrayBuffer;
-		this->Vertices = p.Vertices;
-		this->Indices = p.Indices;
-		this->pxRigidStatic = nullptr;
-		this->pxRigidDynamic = nullptr;
-		this->pxShape = nullptr;
-	}
-	IndexedTriangleList& operator=(IndexedTriangleList& p) {
-		this->VertexArrayBuffer = p.VertexArrayBuffer;
-		this->IndexArrayBuffer = p.IndexArrayBuffer;
-		this->Vertices = p.Vertices;
-		this->Indices = p.Indices;
-		this->pxRigidStatic = p.pxRigidStatic;
-		this->pxRigidDynamic = p.pxRigidDynamic;
-		this->pxShape = p.pxShape;
-		return *this;
-	}
-	~IndexedTriangleList() {}
-	void FreeResources() {
-		glDeleteBuffers(1, &this->VertexArrayBuffer);
-		glDeleteBuffers(1, &this->IndexArrayBuffer);
-		if (this->pxShape) this->pxShape->release();
-		if (this->pxRigidStatic) this->pxRigidStatic->release();
-		if (this->pxRigidDynamic) this->pxRigidDynamic->release();
-	}
-	void AddVertex(float vx, float vy, float vz, float tx, float ty, float ni, float nj, float nk)
-	{
-		this->Vertices.push_back(vx);
-		this->Vertices.push_back(vy);
-		this->Vertices.push_back(vz);
-		this->Vertices.push_back(tx);
-		this->Vertices.push_back(ty);
-		this->Vertices.push_back(ni);
-		this->Vertices.push_back(nj);
-		this->Vertices.push_back(nk);
-	}
-	void AddTriIdices(unsigned int idx1, unsigned int idx2, unsigned int idx3)
-	{
-		this->Indices.push_back(idx1);
-		this->Indices.push_back(idx2);
-		this->Indices.push_back(idx3);
-	}
-	void SetGLBufferIds(GLuint vertex, GLuint index)
-	{
-		this->VertexArrayBuffer = vertex;
-		this->IndexArrayBuffer = index;
-	}
-	void BindArrays()
-	{
-		glBindBuffer(GL_ARRAY_BUFFER, this->VertexArrayBuffer);
-		glBufferData(GL_ARRAY_BUFFER,  this->Vertices.size() * sizeof(float), this->Vertices.data(), GL_STATIC_DRAW);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->IndexArrayBuffer);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, this->Indices.size() * sizeof(unsigned int), this->Indices.data(), GL_STATIC_DRAW);
-	}
-	void BindBuffers()
-	{
-		glBindBuffer(GL_ARRAY_BUFFER, VertexArrayBuffer);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IndexArrayBuffer);
-	}
-	void BindAttribs()
-	{
-		glEnableVertexAttribArray(0);
-		glEnableVertexAttribArray(1);
-		glEnableVertexAttribArray(2);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), 0);
-		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(5 * sizeof(float)));
-	}
-	void UnbindAttribs()
-	{
-		glDisableVertexAttribArray(0);
-		glDisableVertexAttribArray(1);
-		glDisableVertexAttribArray(2);
-	}
-	void DrawElements()
-	{
-		glDrawElements(GL_TRIANGLES, (GLsizei)Indices.size(), GL_UNSIGNED_INT, 0);
-	}
-	void SetRigidDynamic(physx::PxRigidDynamic* lpDyn, physx::PxShape* lpShp)
-	{
-		this->pxRigidDynamic = lpDyn;
-		this->pxShape = lpShp;
-	}
-	void SetRigidStatic(physx::PxRigidStatic* lpStatic, physx::PxShape* lpShp)
-	{
-		this->pxRigidStatic = lpStatic;
-		this->pxShape = lpShp;
-	}
-	physx::PxRigidDynamic* get_RigidDynamic() { return this->pxRigidDynamic; }
-	physx::PxRigidStatic* get_RigidStatic() { return this->pxRigidStatic; }
-private:
-	GLuint VertexArrayBuffer;
-	GLuint IndexArrayBuffer;
-	std::vector<float> Vertices;
-	std::vector<unsigned int> Indices;
-	physx::PxRigidStatic* pxRigidStatic;
-	physx::PxRigidDynamic* pxRigidDynamic;
-	physx::PxShape* pxShape;
-};
-
-typedef struct {
-	GLuint VertexShader;
-	GLuint FragmentShader;
-	GLuint ShaderProgram;
-} SHADER_PROGRAM_CONTEXT;
-
-class ShaderProgramContext
-{
-public:
-	ShaderProgramContext() {
-		this->VertexShader = 0;
-		this->FragmentShader = 0;
-		this->ShaderProgram = 0;
-	}
-	ShaderProgramContext(const char* VertexShaderSource, const char* FragmentShaderSource) {
-		this->VertexShader = 0;
-		this->FragmentShader = 0;
-		this->ShaderProgram = 0;
-		if (TRUE == this->SetupShaders(VertexShaderSource, FragmentShaderSource))
-		{
-			this->SetAsCurrent();
-		}
-	}
-	~ShaderProgramContext() { }
-	void FreeResources() {
-		glDeleteShader(this->VertexShader);
-		glDeleteShader(this->FragmentShader);
-		glDeleteProgram(this->ShaderProgram);
-	}
-	void BuildFromSource(const char* VertexShaderSource, const char* FragmentShaderSource) {
-		if (TRUE == this->SetupShaders(VertexShaderSource, FragmentShaderSource))
-		{
-			this->SetAsCurrent();
-		}
-	}
-	void SetAsCurrent() { 
-		glUseProgram(this->ShaderProgram); 
-	}
-	void SetUniformInt(GLuint loc, GLint value) {
-		glUniform1i(loc, value);
-	}
-	void SetUniformVector3(GLuint loc, const GLfloat* value)
-	{
-		glUniform3fv(loc, 1, value);
-	}
-	void SetUniformMatrix4(GLuint loc, const GLfloat* value)
-	{
-		glUniformMatrix4fv(loc, 1, GL_FALSE, value);
-	}
-	void SetUniformMatrix3(GLuint loc, const GLfloat* value)
-	{
-		glUniformMatrix3fv(loc, 1, GL_FALSE, value);
-	}
-private:
-	GLuint VertexShader;
-	GLuint FragmentShader;
-
-protected:
-	GLuint ShaderProgram;
-
-private:
-	BOOL SetupShaders(const char* vtxss, const char* frgss)
-	{
-		GLint success = 0;
-
-		this->ShaderProgram = glCreateProgram();
-
-		this->VertexShader = glCreateShader(GL_VERTEX_SHADER);
-		glShaderSource(this->VertexShader, 1, &vtxss, NULL);
-		glCompileShader(this->VertexShader);
-		glGetShaderiv(this->VertexShader, GL_COMPILE_STATUS, &success);
-		if (!success) {
-			cout << "ERROR: Failed to compile vertex shader";
-			return FALSE;
-		}
-
-		this->FragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-		glShaderSource(this->FragmentShader, 1, &frgss, NULL);
-		glCompileShader(this->FragmentShader);
-		glGetShaderiv(this->FragmentShader, GL_COMPILE_STATUS, &success);
-		if (!success) {
-			cout << "ERROR: Failed to compile fragment shader";
-			return FALSE;
-		}
-
-		glAttachShader(this->ShaderProgram, this->VertexShader);
-		glAttachShader(this->ShaderProgram, this->FragmentShader);
-		glLinkProgram(this->ShaderProgram);
-
-		glGetProgramiv(this->ShaderProgram, GL_LINK_STATUS, &success);
-		if (!success) {
-			cout << "ERROR: Failed to link shader program" << endl;
-			return FALSE;
-		}
-
-		glValidateProgram(this->ShaderProgram);
-		glGetProgramiv(this->ShaderProgram, GL_VALIDATE_STATUS, &success);
-		if (!success) {
-			cout << "ERROR: Failed to validate shader program" << endl;
-			return FALSE;
-		}
-
-		DumpGlErrors("SetupShaders");
-
-		return TRUE;
-	}
-};
-
 // Global Variables:
 HINSTANCE hInst;                                // current instance
 WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
@@ -296,12 +62,14 @@ BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 HGLRC InitOpengl(HWND hwnd, HDC hdc);
+void DumpGlErrors(const char* FunctionName);
+void ClearGLError();
 
 HANDLE hRenderThread = nullptr;
 HANDLE hStopEvent = nullptr;
 
-float g_ex = 15.0f, g_ey = 20.0f, g_ez = 15.0f;
-float g_az = -45.0f, g_el = 0.0f;
+float g_ex = 5.0f, g_ey = 0.1f, g_ez = 5.0f;
+float g_az = 0.0f, g_el = 0.0f;
 
 DWORD g_KeysDown = 0;
 const DWORD KEY_W = 0x01;
@@ -311,104 +79,6 @@ const DWORD KEY_D = 0x08;
 const DWORD KEY_Q = 0x10;
 const DWORD KEY_E = 0x20;
 const DWORD KEY_MOUSE_LB = 0x40;
-
-const char* g_VertexShaderSource =
-"#version 400\n"
-"layout(location = 0) in vec3 vPosition;"
-"layout(location = 1) in vec2 vTexCoord;"
-"layout(location = 2) in vec3 vNormal;"
-"uniform mat4 gModelMatrix;"
-"uniform mat4 gViewMatrix;"
-"uniform mat4 gProjMatrix;"
-"uniform mat3 gNormViewMatrix;"
-"uniform mat3 gNormModelMatrix;"
-"uniform vec3 gPlayerPos;"
-"out vec2 fragTexCoord;"
-"out vec3 Position;"
-"out vec3 Normal;"
-"out vec3 LightPos;"
-"void main() {"
-"  Normal = normalize(gNormViewMatrix * (gNormModelMatrix * vNormal));"
-"  Position = vec3(gViewMatrix * (gModelMatrix * vec4(vPosition, 1.0)));"
-"  LightPos = vec3(gViewMatrix * (gModelMatrix * vec4(gPlayerPos, 1.0)));"
-"  gl_Position = gProjMatrix * (gViewMatrix * (gModelMatrix * vec4(vPosition, 1.0)));"
-"  fragTexCoord = vTexCoord;"
-"}";
-
-const char* g_FragmentShaderSource =
-"#version 400\n"
-"in vec3 Position;"
-"in vec3 Normal;"
-"in vec3 LightPos;"
-"in vec2 fragTexCoord;"
-"uniform sampler2D texSampler;"
-"out vec4 frag_color;"
-"void main() {"
-"  vec3 n = normalize(Normal);"
-"  vec3 s = normalize(LightPos - Position);"
-"  vec3 v = normalize(-Position);"
-"  vec3 r = reflect(-s, n);"
-//"  vec3 result = vec3(1,1,1) * (vec3(0.5,0.5,0.5) + vec3(0.7,0.7,0.7) * max(dot(s, n),0.0) + vec3(1,1,1) * pow(max(dot(r,v),0.0), 1.0f));"
-"  vec3 result = vec3(.9,.9,.8) * (vec3(0.5,0.5,0.6) + vec3(0.7,0.7,0.7) * max(dot(s, n),0.0));"
-"  frag_color = texture2D(texSampler, fragTexCoord.xy) * vec4(result, 1.0);"
-"}";
-
-class WorldShaderProgramContext : public ShaderProgramContext
-{
-public:
-	WorldShaderProgramContext() {
-		this->BuildFromSource(g_VertexShaderSource, g_FragmentShaderSource);
-		this->ResolveLocations();
-	}
-	~WorldShaderProgramContext() {}
-	void ResolveLocations()
-	{
-		this->gModelMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gModelMatrix");
-		this->gViewMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gViewMatrix");
-		this->gProjMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gProjMatrix");
-		this->gPlayerPosLoc = glGetUniformLocation(this->ShaderProgram, "gPlayerPos");
-		this->gNormModelMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gNormModelMatrix");
-		this->gNormViewMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gNormViewMatrix");
-		this->gTextureLoc = glGetUniformLocation(this->ShaderProgram, "texSampler");
-	}
-
-	void SetTexture(GLint value) {
-		this->SetUniformInt(this->gTextureLoc, value);
-	}
-	void SetProjMatrix(const GLfloat* value)
-	{
-		this->SetUniformMatrix4(this->gProjMatrixLoc, value);
-	}
-	void SetPlayerPos(const GLfloat* value)
-	{
-		this->SetUniformVector3(gPlayerPosLoc, value);
-	}
-	void SetModelMatrix(const GLfloat* value)
-	{
-		this->SetUniformMatrix4(gModelMatrixLoc, value);
-	}
-	void SetNormalModelMatrix(const GLfloat* value)
-	{
-		this->SetUniformMatrix3(gNormModelMatrixLoc, value);
-	}
-	void SetViewMatrix(const GLfloat* value)
-	{
-		this->SetUniformMatrix4(gViewMatrixLoc, value);
-	}
-	void SetNormalViewMatrix(const GLfloat* value)
-	{
-		this->SetUniformMatrix3(gNormViewMatrixLoc, value);
-	}
-
-private:
-	GLuint gModelMatrixLoc;
-	GLuint gViewMatrixLoc;
-	GLuint gProjMatrixLoc;
-	GLuint gPlayerPosLoc;
-	GLuint gNormViewMatrixLoc;
-	GLuint gNormModelMatrixLoc;
-	GLuint gTextureLoc;
-};
 
 const char* g_VtxShaderScreen = "#version 150\n"
 "in vec2 position;"
@@ -473,19 +143,21 @@ public:
 	}
 };
 
-MyAllocator gAallocator;
-UserErrorCallback errcbk;
-physx::PxFoundation* mFoundation = nullptr;
-physx::PxPvd* mPvd = nullptr;
-physx::PxPvdTransport* transport = nullptr;
-physx::PxPhysics* mPhysics = nullptr;
-physx::PxScene* gScene = nullptr;
-physx::PxDefaultCpuDispatcher* gDispatcher = nullptr;
-physx::PxMaterial* gMaterial = nullptr;
-physx::PxRigidStatic* groundPlane = nullptr;
-physx::PxControllerManager *cmanager = nullptr;
-physx::PxController *pChar = nullptr;
-physx::PxCooking* cooking = nullptr;
+struct {
+	MyAllocator gAallocator;
+	UserErrorCallback errcbk;
+	physx::PxFoundation* mFoundation = nullptr;
+	physx::PxPvd* mPvd = nullptr;
+	physx::PxPvdTransport* transport = nullptr;
+	physx::PxPhysics* mPhysics = nullptr;
+	physx::PxScene* gScene = nullptr;
+	physx::PxDefaultCpuDispatcher* gDispatcher = nullptr;
+	physx::PxMaterial* gMaterial = nullptr;
+	physx::PxRigidStatic* groundPlane = nullptr;
+	physx::PxControllerManager *cmanager = nullptr;
+	physx::PxController *pChar = nullptr;
+	physx::PxCooking* cooking = nullptr;
+} PhysxContext;
 
 // to get the vector projection of a on to plane
 void ProjectVecOnPlaneNormal(glm::vec3 &a, glm::vec3 &n, glm::vec3 &c)
@@ -550,6 +222,11 @@ void GetGlFuncs()
 	glTexStorage2D = (PFNGLTEXSTORAGE2DPROC)wglGetProcAddress("glTexStorage2D");
 	glGetAttribLocation = (PFNGLGETATTRIBLOCATIONPROC)wglGetProcAddress("glGetAttribLocation");
 	glUniformMatrix3fv = (PFNGLUNIFORMMATRIX3FVPROC)wglGetProcAddress("glUniformMatrix3fv");
+	wglSwapIntervalEXT = (PFNwglSwapIntervalEXT)wglGetProcAddress("wglSwapIntervalEXT");
+	wglGetSwapIntervalEXT  = (PFNwglGetSwapIntervalEXT)wglGetProcAddress("wglGetSwapIntervalEXT");
+
+	cout << "wglSwapIntervalEXT = " << hex << wglSwapIntervalEXT << endl;
+	cout << "wglGetSwapIntervalEXT = " << hex << wglGetSwapIntervalEXT << endl;
 }
 
 void SetupRenderingContext()
@@ -565,10 +242,10 @@ physx::PxRigidDynamic* createDynamic(const physx::PxTransform& t,
 	const physx::PxGeometry& geometry, 
 	const physx::PxVec3& velocity = physx::PxVec3(0))
 {
-	physx::PxRigidDynamic* dynamic = PxCreateDynamic(*mPhysics, t, geometry, *gMaterial, 10.0f);
+	physx::PxRigidDynamic* dynamic = PxCreateDynamic(*PhysxContext.mPhysics, t, geometry, *PhysxContext.gMaterial, 10.0f);
 	dynamic->setAngularDamping(0.5f);
 	dynamic->setLinearVelocity(velocity);
-	gScene->addActor(*dynamic);
+	PhysxContext.gScene->addActor(*dynamic);
 	return dynamic;
 }
 
@@ -579,7 +256,7 @@ void AddDynamicActor(IndexedTriangleList& trilist, physx::PxVec3 pos, physx::PxV
 	//physx::PxVec3 position(0, 40, 0);
 	//float radius = 1.0f;
 	//float halfHeight = 2.0f;
-	physx::PxRigidDynamic* lpDyn = mPhysics->createRigidDynamic(physx::PxTransform(pos));
+	physx::PxRigidDynamic* lpDyn = PhysxContext.mPhysics->createRigidDynamic(physx::PxTransform(pos));
 	// transform that rotates 90 deg about the z axis
 	//physx::PxTransform relativePose(physx::PxQuat(physx::PxHalfPi, physx::PxVec3(0, 0, 1)));
 	//aCapsuleShape = physx::PxRigidActorExt::createExclusiveShape(*aCapsuleActor,
@@ -587,10 +264,10 @@ void AddDynamicActor(IndexedTriangleList& trilist, physx::PxVec3 pos, physx::PxV
 	physx::PxShape* lpShp = physx::PxRigidActorExt::createExclusiveShape(
 		*lpDyn,
 		//physx::PxBoxGeometry(3, 3, 3), *gMaterial);
-		physx::PxBoxGeometry(size), *gMaterial);
+		physx::PxBoxGeometry(size), *PhysxContext.gMaterial);
 	//aCapsuleShape->setLocalPose(relativePose);
 	physx::PxRigidBodyExt::updateMassAndInertia(*lpDyn, 10.0f);
-	gScene->addActor(*lpDyn);
+	PhysxContext.gScene->addActor(*lpDyn);
 	trilist.SetRigidDynamic(lpDyn, lpShp);
 }
 
@@ -600,13 +277,13 @@ void AddStaticActor(IndexedTriangleList& trilist, physx::PxVec3 pos, physx::PxVe
 		//cube->ox + (cube->dx / 2.0f),
 		//cube->oy + (cube->dy / 2.0f),
 		//cube->oz + (cube->dz / 2.0f));
-	physx::PxRigidStatic* lpStatic = mPhysics->createRigidStatic(physx::PxTransform(pos));
+	physx::PxRigidStatic* lpStatic = PhysxContext.mPhysics->createRigidStatic(physx::PxTransform(pos));
 	physx::PxShape* lpShp = physx::PxRigidActorExt::createExclusiveShape(
 		*lpStatic,
 		//physx::PxBoxGeometry(cube->dx / 2.0f, cube->dy / 2.0f, cube->dz / 2.0f),
 		physx::PxBoxGeometry(size),
-		*gMaterial);
-	gScene->addActor(*lpStatic);
+		*PhysxContext.gMaterial);
+	PhysxContext.gScene->addActor(*lpStatic);
 	trilist.SetRigidStatic(lpStatic, lpShp);
 }
 
@@ -822,57 +499,57 @@ void ApplyKeys(float FramesPerSecond, float* mx, float* my, float* mz)
 
 bool InitializePhysx()
 {
-	mFoundation = PxCreateFoundation(PX_PHYSICS_VERSION, gAallocator, errcbk);
-	if (!mFoundation) {
+	PhysxContext.mFoundation = PxCreateFoundation(PX_PHYSICS_VERSION, PhysxContext.gAallocator, PhysxContext.errcbk);
+	if (!PhysxContext.mFoundation) {
 		cout << "PxCreateFoundation failed!" << endl;
 	}
 
 	bool recordMemoryAllocations = true;
 
-	mPvd = physx::PxCreatePvd(*mFoundation);
-	if (!mPvd) {
+	PhysxContext.mPvd = physx::PxCreatePvd(*PhysxContext.mFoundation);
+	if (!PhysxContext.mPvd) {
 		cout << "failed to create pvd" << endl;
 	}
-	transport = physx::PxDefaultPvdSocketTransportCreate(PVD_HOST, 5425, 10);
-	if (!transport) {
+	PhysxContext.transport = physx::PxDefaultPvdSocketTransportCreate(PVD_HOST, 5425, 10);
+	if (!PhysxContext.transport) {
 		cout << "failed to create transport" << endl;
 	}
-	mPvd->connect(*transport, physx::PxPvdInstrumentationFlag::eALL);
+	PhysxContext.mPvd->connect(*PhysxContext.transport, physx::PxPvdInstrumentationFlag::eALL);
 
-	mPhysics = PxCreatePhysics(PX_PHYSICS_VERSION, *mFoundation,
-		physx::PxTolerancesScale(), recordMemoryAllocations, mPvd);
-	if (!mPhysics) {
+	PhysxContext.mPhysics = PxCreatePhysics(PX_PHYSICS_VERSION, *PhysxContext.mFoundation,
+		physx::PxTolerancesScale(), recordMemoryAllocations, PhysxContext.mPvd);
+	if (!PhysxContext.mPhysics) {
 		cout << "PxCreatePhysics failed!" << endl;
 	}
 
-	if (!PxInitExtensions(*mPhysics, mPvd))
+	if (!PxInitExtensions(*PhysxContext.mPhysics, PhysxContext.mPvd))
 	{
 		cout << "PxInitExtensions failed!" << endl;
 	}
 
-	physx::PxSceneDesc sceneDesc(mPhysics->getTolerancesScale());
+	physx::PxSceneDesc sceneDesc(PhysxContext.mPhysics->getTolerancesScale());
 	sceneDesc.gravity = physx::PxVec3(0.0f, -9.81f, 0.0f);
 
-	gDispatcher = physx::PxDefaultCpuDispatcherCreate(2);
-	if (!gDispatcher) {
+	PhysxContext.gDispatcher = physx::PxDefaultCpuDispatcherCreate(2);
+	if (!PhysxContext.gDispatcher) {
 		cout << "failed to create dispatcher" << endl;
 	}
-	sceneDesc.cpuDispatcher = gDispatcher;
+	sceneDesc.cpuDispatcher = PhysxContext.gDispatcher;
 	sceneDesc.filterShader = physx::PxDefaultSimulationFilterShader;
-	gScene = mPhysics->createScene(sceneDesc);
-	if (!gScene) {
+	PhysxContext.gScene = PhysxContext.mPhysics->createScene(sceneDesc);
+	if (!PhysxContext.gScene) {
 		cout << "failed to create scene" << endl;
 	}
 
-	gMaterial = mPhysics->createMaterial(0.5f, 0.5f, 0.6f);
+	PhysxContext.gMaterial = PhysxContext.mPhysics->createMaterial(0.5f, 0.5f, 0.6f);
 
-	cmanager = PxCreateControllerManager(*gScene);
+	PhysxContext.cmanager = PxCreateControllerManager(*PhysxContext.gScene);
 	physx::PxCapsuleControllerDesc desc;
 	desc.height = 4.0f;
-	desc.material = gMaterial;
+	desc.material = PhysxContext.gMaterial;
 	desc.position = physx::PxExtendedVec3(g_ex, g_ey + 5.0f, g_ez);
 	desc.radius = 1.0f;
-	pChar = cmanager->createController(desc);
+	PhysxContext.pChar = PhysxContext.cmanager->createController(desc);
 
 	return true;
 }
@@ -880,8 +557,8 @@ bool InitializePhysx()
 physx::PxMat44 PhysxSimulate(physx::PxRigidDynamic* pFallingCubeDynamic, BULLET_STRUCT* bullets)
 {
 	physx::PxShape* shapes[1];
-	gScene->simulate(1.0f / 60.0f); // 60th of a sec (60 fps)
-	gScene->fetchResults(true);
+	PhysxContext.gScene->simulate(1.0f / 60.0f); // 60th of a sec (60 fps)
+	PhysxContext.gScene->fetchResults(true);
 	physx::PxU32 n = pFallingCubeDynamic->getNbShapes();
 	pFallingCubeDynamic->getShapes(shapes, n);
 	const physx::PxMat44 shapePose(physx::PxShapeExt::getGlobalPose(*shapes[0], *pFallingCubeDynamic));
@@ -899,17 +576,17 @@ physx::PxMat44 PhysxSimulate(physx::PxRigidDynamic* pFallingCubeDynamic, BULLET_
 
 void DisposePhysx()
 {
-	if (cooking) cooking->release();
-	if (pChar) pChar->release();
-	if (cmanager) cmanager->release();
-	if (gMaterial) gMaterial->release();
-	if (groundPlane) groundPlane->release();
-	if (gScene) gScene->release();
-	if (gDispatcher) gDispatcher->release();
-	if (mPhysics) mPhysics->release();
-	if (transport) transport->release();
-	if (mPvd) mPvd->release();
-	if (mFoundation) mFoundation->release();
+	if (PhysxContext.cooking) PhysxContext.cooking->release();
+	if (PhysxContext.pChar) PhysxContext.pChar->release();
+	if (PhysxContext.cmanager) PhysxContext.cmanager->release();
+	if (PhysxContext.gMaterial) PhysxContext.gMaterial->release();
+	if (PhysxContext.groundPlane) PhysxContext.groundPlane->release();
+	if (PhysxContext.gScene) PhysxContext.gScene->release();
+	if (PhysxContext.gDispatcher) PhysxContext.gDispatcher->release();
+	if (PhysxContext.mPhysics) PhysxContext.mPhysics->release();
+	if (PhysxContext.transport) PhysxContext.transport->release();
+	if (PhysxContext.mPvd) PhysxContext.mPvd->release();
+	if (PhysxContext.mFoundation) PhysxContext.mFoundation->release();
 }
 
 CUBE* LoadGeometryJson(const char* filename, unsigned int* numCubes)
@@ -971,10 +648,12 @@ CUBE* LoadGeometryJson(const char* filename, unsigned int* numCubes)
 	return lpCubes;
 }
 
-void InitGlFont(HDC hdc, GLCONTEXT *lpContext)
+BOOL InitGlFont(HDC hdc, GLCONTEXT *lpContext)
 {
+	ClearGLError();
 	lpContext->fontBase = glGenLists(96);
-	wglUseFontBitmaps(hdc, 33, 96, lpContext->fontBase);
+	if (glGetError()) return FALSE;
+	return wglUseFontBitmaps(hdc, 32, 96, lpContext->fontBase);
 }
 
 void FreeGlFont(GLCONTEXT *lpContext)
@@ -1019,23 +698,6 @@ IndexedTriangleList CreateFallingCube()
 	return triList;
 }
 
-void TestNormals()
-{
-	cout << "Testing normals..." << endl;
-	glm::vec3 n(1, 0, 0);
-	glm::vec3 nn3 = glm::normalize(n);
-	glm::vec4 nn4 = glm::vec4(glm::normalize(n), 1);
-	cout << nn4[0] << ", " << nn4[1] << ", " << nn4[2] << ", " << nn4[3] << endl;
-
-	glm::mat4 r = glm::rotate(DEG2RAD(90), glm::vec3(0, 1, 0)) * glm::translate(glm::vec3(10, 10, 10));
-	glm::vec4 nnr4 = r * nn4;
-	cout << nnr4[0] << ", " << nnr4[1] << ", " << nnr4[2] << ", " << nnr4[3] << endl;
-
-	glm::mat3 normm = glm::inverse(glm::transpose(glm::mat3(r)));
-	glm::vec3 nnr3 = normm * nn3;
-	cout << nnr3[0] << ", " << nnr3[1] << ", " << nnr3[2] << endl;
-}
-
 DWORD WINAPI RenderThread(void* parm)
 {
 	HWND hWnd = (HWND)parm;
@@ -1049,24 +711,35 @@ DWORD WINAPI RenderThread(void* parm)
 	float FramesPerSecond = 0.0f;
 	float ctsPerFrame = 0.0f; // at 60 fps
 	float prc = 0.0f;
-	GLCONTEXT lpContext;
+	GLCONTEXT lpContext = { 0 };
 	BULLET_STRUCT bullets[10];
 	unsigned int nextbullet = 0;
 	unsigned int bulletWait = 0;
 	char TextBuffer[80];
 	ScreenBuffer sb;
 
-	sb.AddString("Ready...");
-	TestNormals();
+	cout << "Begin render thread" << endl;
 
+	memset(&bullets, 0, 10 * sizeof(BULLET_STRUCT));
+	memset(&lpContext, 0, sizeof(GLCONTEXT));
+
+	// get performance counter frequency info
+	// computer counts per frame at 60 fps
 	QueryPerformanceFrequency(&perfFreq);
 	ctsPerFrame = (float)perfFreq.QuadPart / 60.0f;
 
+	// get device context for window and init opengl
 	hdc = GetDC(hWnd);
 	hglrc = InitOpengl(hWnd, hdc);
 
 	// init font
-	InitGlFont(hdc, &lpContext);
+	if (FALSE == InitGlFont(hdc, &lpContext))
+	{
+		cout << "ERROR: Failed to init font" << endl;
+	}
+	else {
+		cout << "Font successfully initialized" << endl;
+	}
 
 	// initialize physx
 	if (false == InitializePhysx())
@@ -1077,45 +750,49 @@ DWORD WINAPI RenderThread(void* parm)
 		cout << "Physx successfully initialized" << endl;
 	}
 
-	memset(&bullets, 0, 10 * sizeof(BULLET_STRUCT));
-
-	cout << "Begin render thread" << endl;
+	// setup the open gl rendering context
+	// clear color, other global settings
 	SetupRenderingContext();
 
-	memset(&lpContext, 0, sizeof(GLCONTEXT));
+	// create triangle lists
+	lpContext.lpIdtFile = new IndexedTriangleList(LoadAndProcessGeometryFile());	// geometry json file
+	lpContext.lpIdtFallingCube = new IndexedTriangleList(CreateFallingCube());		// a falling cube
+	lpContext.lpIdtBulletBox = new IndexedTriangleList(CreateBullets());			// a "bullet" cube
 
-	lpContext.lpIdtFile = new IndexedTriangleList(LoadAndProcessGeometryFile());
-	lpContext.lpIdtFallingCube = new IndexedTriangleList(CreateFallingCube());
-	lpContext.lpIdtBulletBox = new IndexedTriangleList(CreateBullets());
-
+	// load a texture
 	SetupTextures(&lpContext);
 
+	// create the shaders
 	lpContext.lpWorldShader = new WorldShaderProgramContext();
 	lpContext.lpScreenShader = new ScreenShaderProgramContext();
 
-	// need to set this as current to set projection matrix
+	// configure the world shader (main shader)
+	//   first - set it as currrent
 	lpContext.lpWorldShader->SetAsCurrent();
 
-	// projection matrix
+	//   set the projection matrix
 	GetClientRect(hWnd, &clientRect);
 	glm::mat4 proj = glm::perspective(45.0f,
 		(float)(clientRect.right - clientRect.left) / (float)(clientRect.bottom - clientRect.top),
 		0.1f, 1000.0f);
-	
 	lpContext.lpWorldShader->SetProjMatrix(&proj[0][0]);
 
-	// set the viewport
+	// while we have a reference to the client size, set the viewport
 	glViewport(0, 0, clientRect.right - clientRect.left, clientRect.bottom - clientRect.top);
 
-	// set the texture
+	// set the current texture (we only have one right now)
 	lpContext.lpWorldShader->SetTexture(0);
+
+	sb.AddString("Ready...");
 
 	while (TRUE) {
 
+		// get the current perf count, calc FPS and save count
 		QueryPerformanceCounter(&perfCount);
 		FramesPerSecond = (float)perfFreq.QuadPart / (float)(perfCount.QuadPart - lastCount);
 		lastCount = perfCount.QuadPart;
 
+		// check for thread stop event
 		if (WAIT_OBJECT_0 != WaitForSingleObject(hStopEvent, 0))
 		{
 			lpContext.lpWorldShader->SetAsCurrent();
@@ -1126,7 +803,7 @@ DWORD WINAPI RenderThread(void* parm)
 
 			// move the user
 			physx::PxControllerCollisionFlags collisionFlags =
-				pChar->move(physx::PxVec3(mx, my, mz), 0.0f, 1.0f / 60.0f, physx::PxControllerFilters());
+				PhysxContext.pChar->move(physx::PxVec3(mx, my, mz), 0.0f, 1.0f / 60.0f, physx::PxControllerFilters());
 			//if (collisionFlags.isSet(physx::PxControllerCollisionFlag::eCOLLISION_DOWN))
 			//{
 				//sb.AddString("Collission!!");
@@ -1139,7 +816,7 @@ DWORD WINAPI RenderThread(void* parm)
 			physx::PxMat44 blockPose = PhysxSimulate(lpContext.lpIdtFallingCube->get_RigidDynamic(), bullets);
 
 			// get the user location after simulation
-			physx::PxExtendedVec3 ppos = pChar->getPosition();
+			physx::PxExtendedVec3 ppos = PhysxContext.pChar->getPosition();
 			g_ex = (float)ppos.x;
 			g_ey = (float)ppos.y;
 			g_ez = (float)ppos.z;
@@ -1272,6 +949,7 @@ DWORD WINAPI RenderThread(void* parm)
 			SwapBuffers(hdc);
 		}
 		else {
+			// if thread stop, then, break the loop
 			break;
 		}
 
@@ -1289,6 +967,8 @@ DWORD WINAPI RenderThread(void* parm)
 		LONGLONG msToWait = (LONGLONG)remainingCounts * 1000 / perfFreq.QuadPart;
 		if (msToWait > 0) Sleep((DWORD)msToWait);
 	}
+
+	// clean up
 
 	FreeGlFont(&lpContext);
 
@@ -1361,6 +1041,13 @@ HGLRC InitOpengl(HWND hwnd, HDC hdc)
 		cout << "OPEN GL RENDERER IS: " << gl_rend << endl;
 	}
 	GetGlFuncs();
+
+	if (wglSwapIntervalEXT(1)) {
+		cout << "wglSwapIntervalEXT is success" << endl;
+	}
+	else {
+		cout << "INFO: wglSwapIntervalEXT FAILED" << endl;
+	}
 
 	return hrc;
 }
@@ -1478,10 +1165,10 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	ChangeDisplaySettings(&dmScreenSettings, CDS_FULLSCREEN);
 
 	HWND hwnd = CreateWindowEx(WS_EX_APPWINDOW, szWindowClass, szTitle, 
-		//WS_POPUP, //WS_OVERLAPPEDWINDOW^WS_THICKFRAME,
-		//0, 0, dmScreenSettings.dmPelsWidth, dmScreenSettings.dmPelsHeight, 
-		WS_OVERLAPPEDWINDOW^WS_THICKFRAME,
-		0, 0, 640, 480,
+		WS_POPUP, //WS_OVERLAPPEDWINDOW^WS_THICKFRAME,
+		0, 0, dmScreenSettings.dmPelsWidth, dmScreenSettings.dmPelsHeight, 
+		//WS_OVERLAPPEDWINDOW^WS_THICKFRAME,
+		//0, 0, 640, 480,
 		nullptr, nullptr, hInstance, nullptr);
 
    if (!hwnd)
@@ -1716,4 +1403,17 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
         break;
     }
     return (INT_PTR)FALSE;
+}
+
+void DumpGlErrors(const char* FunctionName)
+{
+	GLenum err;
+	while ((err = glGetError()) != GL_NO_ERROR) {
+		cout << "GL ERROR: " << FunctionName << ": " << hex << err << dec << endl;
+	}
+}
+
+void ClearGLError()
+{
+	while (glGetError()) {}
 }

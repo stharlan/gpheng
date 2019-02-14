@@ -153,21 +153,27 @@
     <ClInclude Include="cgltf.h" />
     <ClInclude Include="glcorearb.h" />
     <ClInclude Include="glw.h" />
+    <ClInclude Include="IndexedTriangleList.h" />
     <ClInclude Include="khrplatform.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="ScreenBuffer.h" />
+    <ClInclude Include="ShaderProgramContext.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="WorldShaderProgramContext.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="glw.cpp" />
+    <ClCompile Include="IndexedTriangleList.cpp" />
     <ClCompile Include="ScreenBuffer.cpp" />
+    <ClCompile Include="ShaderProgramContext.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="WorldShaderProgramContext.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="glw.rc" />

@@ -52,3 +52,6 @@ using namespace Gdiplus;
 #include <rapidjson/stringbuffer.h>
 
 #include "ScreenBuffer.h"
+#include "IndexedTriangleList.h"
+#include "ShaderProgramContext.h"
+#include "WorldShaderProgramContext.h"
