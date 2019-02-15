@@ -13,6 +13,7 @@ public:
 	void SetUniformVector3(GLuint loc, const GLfloat* value);
 	void SetUniformMatrix4(GLuint loc, const GLfloat* value);
 	void SetUniformMatrix3(GLuint loc, const GLfloat* value);
+	void SetUniformFloat(GLuint loc, GLfloat value);
 private:
 	GLuint VertexShader;
 	GLuint FragmentShader;

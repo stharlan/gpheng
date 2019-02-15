@@ -8,8 +8,8 @@ public:
 	IndexedTriangleList& operator=(IndexedTriangleList& p);
 	~IndexedTriangleList();
 	void FreeResources();
-	void AddVertex(float vx, float vy, float vz, float tx, float ty, float ni, float nj, float nk);
-	void AddTriIdices(unsigned int idx1, unsigned int idx2, unsigned int idx3);
+	void AddVertex(float vx, float vy, float vz, float tx, float ty, float ni, float nj, float nk, bool dbg = false);
+	void AddTriIndices(unsigned int idx1, unsigned int idx2, unsigned int idx3, bool dbg = false);
 	void SetGLBufferIds(GLuint vertex, GLuint index);
 	void BindArrays();
 	void BindBuffers();
@@ -20,6 +20,9 @@ public:
 	void SetRigidStatic(physx::PxRigidStatic* lpStatic, physx::PxShape* lpShp);
 	physx::PxRigidDynamic* get_RigidDynamic();
 	physx::PxRigidStatic* get_RigidStatic();
+	unsigned int GetFloatCount();
+	void CalculateVertexNormals();
+	void ReverseWinding();
 private:
 	GLuint VertexArrayBuffer;
 	GLuint IndexArrayBuffer;

@@ -44,16 +44,19 @@ const char* g_VertexShaderSource =
 "uniform mat3 gNormViewMatrix;"
 "uniform mat3 gNormModelMatrix;"
 "uniform vec3 gPlayerPos;"
+"uniform int DrawSkyBox;"
 "out vec2 fragTexCoord;"
 "out vec3 Position;"
 "out vec3 Normal;"
 "out vec3 LightPos;"
+"out vec3 ReflectDir;"  // The direction of the reflected ray
 "void main() {"
 "  Normal = normalize(gNormViewMatrix * (gNormModelMatrix * vNormal));"
 "  Position = vec3(gViewMatrix * (gModelMatrix * vec4(vPosition, 1.0)));"
 "  LightPos = vec3(gViewMatrix * vec4(gPlayerPos, 1.0));"
 "  gl_Position = gProjMatrix * (gViewMatrix * (gModelMatrix * vec4(vPosition, 1.0)));"
 "  fragTexCoord = vTexCoord;"
+"  ReflectDir = vPosition;"
 "}";
 
 const char* g_FragmentShaderSource =
@@ -62,17 +65,33 @@ const char* g_FragmentShaderSource =
 "in vec3 Normal;"
 "in vec3 LightPos;"
 "in vec2 fragTexCoord;"
+"in vec3 ReflectDir;"   // The direction of the reflected ray 
 "uniform sampler2D texSampler;"
 "out vec4 frag_color;"
+"uniform vec3 LightIntensity;"
+"uniform vec3 LightAmbient;"
+"uniform vec3 LightDiffuse;"
+"uniform vec3 LightSpecular;"
+"uniform float LightShininess;"
+"uniform int DrawSkyBox;"
+"uniform samplerCube CubeMapTex;"
 "void main() {"
-"  vec3 n = normalize(Normal);"
-"  vec3 s = normalize(LightPos - Position);"
-"  vec3 v = normalize(-Position);"
-"  vec3 r = reflect(-s, n);"
-//"  vec3 result = vec3(1,1,1) * (vec3(0.5,0.5,0.5) + vec3(0.7,0.7,0.7) * max(dot(s, n),0.0) + vec3(1,1,1) * pow(max(dot(r,v),0.0), 1.0f));"
-"  vec3 result = vec3(.9,.9,.8) * (vec3(0.5,0.5,0.6) + vec3(0.7,0.7,0.7) * max(dot(s, n),0.0));"
-"  frag_color = texture2D(texSampler, fragTexCoord.xy) * vec4(result, 1.0);"
+"  if(DrawSkyBox == 1) {"
+"    frag_color = texture(CubeMapTex, ReflectDir);"
+"  } else {"
+"    vec3 n = normalize(Normal);"
+"    vec3 s = normalize(LightPos - Position);"
+"    vec3 v = normalize(-Position);"
+"    vec3 r = reflect(-s, n);"
+"    vec3 result = LightIntensity * ("
+"      LightAmbient +"
+"      LightDiffuse * max(dot(s,n),0.0) +"
+"      LightSpecular * pow(max(dot(r,v),0.0), LightShininess));"
+"    frag_color = texture2D(texSampler, fragTexCoord.xy) * vec4(result, 1.0);"
+"  }"
 "}";
+//"  vec3 result = vec3(1,1,1) * (vec3(0.5,0.5,0.5) + vec3(0.7,0.7,0.7) * max(dot(s, n),0.0) + vec3(1,1,1) * pow(max(dot(r,v),0.0), 1.0f));"
+//"  vec3 result = vec3(.9,.9,.8) * (vec3(0.5,0.5,0.6) + vec3(0.7,0.7,0.7) * max(dot(s, n),0.0));"
 
 WorldShaderProgramContext::WorldShaderProgramContext() {
 	this->BuildFromSource(g_VertexShaderSource, g_FragmentShaderSource);
@@ -91,6 +110,15 @@ void WorldShaderProgramContext::ResolveLocations()
 	this->gNormModelMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gNormModelMatrix");
 	this->gNormViewMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gNormViewMatrix");
 	this->gTextureLoc = glGetUniformLocation(this->ShaderProgram, "texSampler");
+
+	this->LightIntensityVec3Loc = glGetUniformLocation(this->ShaderProgram, "LightIntensity");
+	this->LightAmbientVec3Loc = glGetUniformLocation(this->ShaderProgram, "LightAmbient");
+	this->LightDiffuseVec3Loc = glGetUniformLocation(this->ShaderProgram, "LightDiffuse");
+	this->LightSpecularVec3Loc = glGetUniformLocation(this->ShaderProgram, "LightSpecular");
+	this->LightShininessFloatLoc = glGetUniformLocation(this->ShaderProgram, "LightShininess");
+
+	this->DrawSkyBoxLoc = glGetUniformLocation(this->ShaderProgram, "DrawSkyBox");
+	this->CubeMapTexLoc = glGetUniformLocation(this->ShaderProgram, "CubeMapTex");
 }
 
 void WorldShaderProgramContext::SetTexture(GLint value) {
@@ -125,4 +153,38 @@ void WorldShaderProgramContext::SetViewMatrix(const GLfloat* value)
 void WorldShaderProgramContext::SetNormalViewMatrix(const GLfloat* value)
 {
 	this->SetUniformMatrix3(gNormViewMatrixLoc, value);
+}
+
+void WorldShaderProgramContext::SetLightIntensity(const GLfloat* value)
+{
+	this->SetUniformVector3(LightIntensityVec3Loc, value);
+}
+
+void WorldShaderProgramContext::SetLightAmbient(const GLfloat* value)
+{
+	this->SetUniformVector3(LightAmbientVec3Loc, value);
+}
+
+void WorldShaderProgramContext::SetLightDiffuse(const GLfloat* value)
+{
+	this->SetUniformVector3(LightDiffuseVec3Loc, value);
+}
+
+void WorldShaderProgramContext::SetLightSpecular(const GLfloat* value)
+{
+	this->SetUniformVector3(LightSpecularVec3Loc, value);
+}
+
+void WorldShaderProgramContext::SetLightShininess(const GLfloat value)
+{
+	this->SetUniformFloat(LightShininessFloatLoc, value);
+}
+
+void WorldShaderProgramContext::SetDrawSkyBox(GLint i)
+{
+	this->SetUniformInt(this->DrawSkyBoxLoc, i);
+}
+
+void WorldShaderProgramContext::SetCubeMapTexture(GLint value) {
+	this->SetUniformInt(this->CubeMapTexLoc, value);
 }

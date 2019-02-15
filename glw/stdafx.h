@@ -18,10 +18,11 @@
 #include <tchar.h>
 #include <vector>
 #include <map>
+#include <iostream>
+#include <fstream>
 
 // reference additional headers your program requires here
 #include <gl/GL.h>
-#include <iostream>
 #include <objidl.h>
 #include <gdiplus.h>
 

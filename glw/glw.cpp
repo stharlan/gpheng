@@ -41,15 +41,16 @@ PFNGLGETSHADERIVPROC glGetShaderiv;
 PFNGLGENERATEMIPMAPPROC glGenerateMipmap;
 PFNGLACTIVETEXTUREPROC glActiveTexture;
 PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
-PFNGLUNIFORM1IPROC glUniform1i;
-PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv;
-PFNGLUNIFORM3FVPROC glUniform3fv;
 PFNGLDELETEBUFFERSPROC glDeleteBuffers;
 PFNGLDELETEPROGRAMPROC glDeleteProgram;
 PFNGLDELETESHADERPROC glDeleteShader;
 PFNGLTEXSTORAGE2DPROC glTexStorage2D;
 PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
+PFNGLUNIFORM1IPROC glUniform1i;
+PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv;
+PFNGLUNIFORM3FVPROC glUniform3fv;
 PFNGLUNIFORMMATRIX3FVPROC glUniformMatrix3fv;
+PFNGLUNIFORM1FPROC glUniform1f;
 
 // Global Variables:
 HINSTANCE hInst;                                // current instance
@@ -68,7 +69,7 @@ void ClearGLError();
 HANDLE hRenderThread = nullptr;
 HANDLE hStopEvent = nullptr;
 
-float g_ex = 5.0f, g_ey = 0.1f, g_ez = 5.0f;
+float g_ex = 15.0f, g_ey = 11.0f, g_ez = 15.0f;
 float g_az = 0.0f, g_el = 0.0f;
 
 DWORD g_KeysDown = 0;
@@ -115,6 +116,7 @@ typedef struct {
 	IndexedTriangleList* lpIdtFallingCube;
 	IndexedTriangleList* lpIdtBulletBox;
 	GLuint fontBase;
+	GLuint CubeMapTexId;
 } GLCONTEXT;
 
 class MyAllocator : public physx::PxAllocatorCallback
@@ -222,11 +224,12 @@ void GetGlFuncs()
 	glTexStorage2D = (PFNGLTEXSTORAGE2DPROC)wglGetProcAddress("glTexStorage2D");
 	glGetAttribLocation = (PFNGLGETATTRIBLOCATIONPROC)wglGetProcAddress("glGetAttribLocation");
 	glUniformMatrix3fv = (PFNGLUNIFORMMATRIX3FVPROC)wglGetProcAddress("glUniformMatrix3fv");
+	glUniform1f = (PFNGLUNIFORM1FPROC)wglGetProcAddress("glUniform1f");
 	wglSwapIntervalEXT = (PFNwglSwapIntervalEXT)wglGetProcAddress("wglSwapIntervalEXT");
 	wglGetSwapIntervalEXT  = (PFNwglGetSwapIntervalEXT)wglGetProcAddress("wglGetSwapIntervalEXT");
 
-	cout << "wglSwapIntervalEXT = " << hex << wglSwapIntervalEXT << endl;
-	cout << "wglGetSwapIntervalEXT = " << hex << wglGetSwapIntervalEXT << endl;
+	cout << "wglSwapIntervalEXT = " << hex << wglSwapIntervalEXT << dec << endl;
+	cout << "wglGetSwapIntervalEXT = " << hex << wglGetSwapIntervalEXT << dec << endl;
 }
 
 void SetupRenderingContext()
@@ -287,6 +290,103 @@ void AddStaticActor(IndexedTriangleList& trilist, physx::PxVec3 pos, physx::PxVe
 	trilist.SetRigidStatic(lpStatic, lpShp);
 }
 
+IndexedTriangleList CreateSphere(float radius, int rings, int slices)
+{
+
+	IndexedTriangleList itl;
+	GLuint buffers[2];
+
+	// number of triangles
+	// first and last ring have 1 tri per slice
+	// the rest have two tri's per slice
+	int ntri = (2 * slices) + ((rings - 2) * slices * 2);
+	int nvrt = ((rings - 1) * slices) + 2;
+	int trisPerRing = 0;
+	if (rings > 2) trisPerRing = 2 * slices;
+	float theta, phi;
+	float sliceInterval = 360.0f / slices;
+	float phiInterval = 180.0f / rings;
+
+	cout << "rings = " << rings << endl;
+	cout << "slices = " << slices << endl;
+	cout << "ntri = " << ntri << endl;
+	cout << "nvrt = " << nvrt << endl;
+	cout << "tris per ring = " << trisPerRing << endl;
+
+	// first vertex
+	itl.AddVertex(0, radius, 0, 0.0f, 0.0f, 0, 0, 0);
+
+	for (phi = phiInterval; phi < 180.0f; phi += phiInterval)
+	{
+		float phir = phi / 180.0f * CONSTPI;
+		for (theta = 0; theta < 360.0f; theta += sliceInterval)
+		{
+			float thetar = theta / 180.0f * CONSTPI;
+			itl.AddVertex(radius * cosf(thetar) * sinf(phir), radius * cosf(phir), radius * sinf(thetar) * sinf(phir),
+				theta / 360.0f, phi / 180.0f, 
+				0, 0, 0);
+		}
+	}
+
+	// last vertex
+	itl.AddVertex(0, -radius, 0, 0.0f, 1.0f, 0, 0, 0);
+
+	cout << "Added " << itl.GetFloatCount() << " floats" << endl;
+
+	// 0, 1, 2
+	// slices - 1 = 2
+	for (int i = 0; i < slices; i++) {
+
+		if (i == (slices - 1)) { // last slice
+			itl.AddTriIndices(0, i + 1, 1);
+		}
+		else {
+			itl.AddTriIndices(0, i + 1, i + 2);
+		}
+
+		if (i == (slices - 1)) { // last slice
+			itl.AddTriIndices(nvrt - 1, (nvrt - slices) - 1, nvrt - 2);
+		}
+		else {
+			itl.AddTriIndices(nvrt - 1, (nvrt - slices) + i, ((nvrt - slices) + i) - 1);
+		}
+	}
+
+	for (int r = 1; r < (rings - 1); r++) {
+		for (int s = 0; s < slices; s++) {
+
+			int vertsToAdd = (r - 1) * slices;
+
+			if (s == (slices - 1)) {
+				// last slice
+				itl.AddTriIndices(s + 1 + vertsToAdd, s + 1 + slices + vertsToAdd, (s - slices) + 2 + vertsToAdd);
+			}
+			else {
+				itl.AddTriIndices(s + 1 + vertsToAdd, s + 1 + slices + vertsToAdd, s + 2 + vertsToAdd);
+			}
+
+			if (s == (slices - 1)) {
+				// last slice
+				itl.AddTriIndices((s - slices) + 2 + vertsToAdd, s + 1 + slices + vertsToAdd, s + 2 + vertsToAdd);
+			}
+			else {
+				itl.AddTriIndices(s + 2 + vertsToAdd, s + 1 + slices + vertsToAdd, s + 2 + slices + vertsToAdd);
+			}
+
+		}
+	}
+
+	//itl.ReverseWinding();
+	itl.CalculateVertexNormals();
+
+	glGenBuffers(2, buffers);
+	itl.SetGLBufferIds(buffers[0], buffers[1]);
+	itl.BindArrays();
+
+	return itl;
+
+}
+
 IndexedTriangleList CreateCubes(unsigned int numCubes, CUBE* cubeList)
 {
 
@@ -327,8 +427,8 @@ IndexedTriangleList CreateCubes(unsigned int numCubes, CUBE* cubeList)
 		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz, cb->dx / 2.0f, cb->dy / 2.0f, 0.0f, 0.0f, -1.0f);
 
 		// face 1 indexes
-		trilist.AddTriIdices((c * 24) + 0, (c * 24) + 2, (c * 24) + 1);
-		trilist.AddTriIdices((c * 24) + 0, (c * 24) + 3, (c * 24) + 2);
+		trilist.AddTriIndices((c * 24) + 0, (c * 24) + 2, (c * 24) + 1);
+		trilist.AddTriIndices((c * 24) + 0, (c * 24) + 3, (c * 24) + 2);
 
 		// face 2 vertices x/y pos z
 		// pos x,y,z
@@ -337,8 +437,8 @@ IndexedTriangleList CreateCubes(unsigned int numCubes, CUBE* cubeList)
 		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz + cb->dz, cb->dx / 2.0f, 0.0f, 0.0f, 0.0f, 1.0f);
 		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz + cb->dz, cb->dx / 2.0f, cb->dy / 2.0f, 0.0f, 0.0f, 1.0f);
 
-		trilist.AddTriIdices((c * 24) + 4, (c * 24) + 5, (c * 24) + 6);
-		trilist.AddTriIdices((c * 24) + 4, (c * 24) + 6, (c * 24) + 7);
+		trilist.AddTriIndices((c * 24) + 4, (c * 24) + 5, (c * 24) + 6);
+		trilist.AddTriIndices((c * 24) + 4, (c * 24) + 6, (c * 24) + 7);
 
 		// face 3 vertices x/y pos z
 		trilist.AddVertex(cb->ox, cb->oy, cb->oz, 0.0f, cb->dz / 2.0f, 0.0f, -1.0f, 0.0f);
@@ -347,8 +447,8 @@ IndexedTriangleList CreateCubes(unsigned int numCubes, CUBE* cubeList)
 		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz, cb->dx / 2.0f, cb->dz / 2.0f, 0.0f, -1.0f, 0.0f);
 
 		// face 3 indexes
-		trilist.AddTriIdices((c * 24) + 8, (c * 24) + 9, (c * 24) + 10);
-		trilist.AddTriIdices((c * 24) + 8, (c * 24) + 10, (c * 24) + 11);
+		trilist.AddTriIndices((c * 24) + 8, (c * 24) + 9, (c * 24) + 10);
+		trilist.AddTriIndices((c * 24) + 8, (c * 24) + 10, (c * 24) + 11);
 
 		// face 4 vertices x/y pos z
 		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz, 0.0f, cb->dz / 2.0f, 0.0f, 1.0f, 0.0f);
@@ -357,8 +457,8 @@ IndexedTriangleList CreateCubes(unsigned int numCubes, CUBE* cubeList)
 		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz, cb->dx / 2.0f, cb->dz / 2.0f, 0.0f, 1.0f, 0.0f);
 
 		// face 4 indexes
-		trilist.AddTriIdices((c * 24) + 12, (c * 24) + 14, (c * 24) + 13);
-		trilist.AddTriIdices((c * 24) + 12, (c * 24) + 15, (c * 24) + 14);
+		trilist.AddTriIndices((c * 24) + 12, (c * 24) + 14, (c * 24) + 13);
+		trilist.AddTriIndices((c * 24) + 12, (c * 24) + 15, (c * 24) + 14);
 
 		// face 4 vertices x/y pos z
 		trilist.AddVertex(cb->ox, cb->oy, cb->oz, 0.0f, cb->dz / 2.0f, -1.0f, 0.0f, 0.0f);
@@ -367,8 +467,8 @@ IndexedTriangleList CreateCubes(unsigned int numCubes, CUBE* cubeList)
 		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz, cb->dy / 2.0f, cb->dz / 2.0f, -1.0f, 0.0f, 0.0f);
 
 		// face 4 indexes
-		trilist.AddTriIdices((c * 24) + 16, (c * 24) + 18, (c * 24) + 17);
-		trilist.AddTriIdices((c * 24) + 16, (c * 24) + 19, (c * 24) + 18);
+		trilist.AddTriIndices((c * 24) + 16, (c * 24) + 18, (c * 24) + 17);
+		trilist.AddTriIndices((c * 24) + 16, (c * 24) + 19, (c * 24) + 18);
 
 		// face 4 vertices x/y pos z
 		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz, 0.0f, cb->dz / 2.0f, 1.0f, 0.0f, 0.0f);
@@ -377,8 +477,8 @@ IndexedTriangleList CreateCubes(unsigned int numCubes, CUBE* cubeList)
 		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz, cb->dy / 2.0f, cb->dz / 2.0f, 1.0f, 0.0f, 0.0f);
 
 		// face 4 indexes
-		trilist.AddTriIdices((c * 24) + 20, (c * 24) + 21, (c * 24) + 22);
-		trilist.AddTriIdices((c * 24) + 20, (c * 24) + 22, (c * 24) + 23);
+		trilist.AddTriIndices((c * 24) + 20, (c * 24) + 21, (c * 24) + 22);
+		trilist.AddTriIndices((c * 24) + 20, (c * 24) + 22, (c * 24) + 23);
 	}
 
 	glGenBuffers(2, buffers);
@@ -397,18 +497,60 @@ IndexedTriangleList CreateCubes(unsigned int numCubes, CUBE* cubeList)
 	return trilist;
 }
 
+void SetupCubeMap(GLCONTEXT* lpGlContext)
+{
+	glActiveTexture(GL_TEXTURE1);
+	glGenTextures(1, &lpGlContext->CubeMapTexId);
+	glBindTexture(GL_TEXTURE_CUBE_MAP, lpGlContext->CubeMapTexId);
+	const wchar_t* files[] = {
+		L"skyr.png",L"skyl.png",L"skyu.png",L"skyd.png",L"skyc.png",L"skyrr.png"
+	};
+	GLuint targets[] = {
+		GL_TEXTURE_CUBE_MAP_POSITIVE_X, 
+		GL_TEXTURE_CUBE_MAP_NEGATIVE_X,
+		GL_TEXTURE_CUBE_MAP_POSITIVE_Y,
+		GL_TEXTURE_CUBE_MAP_NEGATIVE_Y,
+		GL_TEXTURE_CUBE_MAP_POSITIVE_Z,
+		GL_TEXTURE_CUBE_MAP_NEGATIVE_Z
+	};
+	for (int i = 0; i < 6; i++) {
+		wcout << L"Loading cube tex " << files[i] << endl;
+		Gdiplus::Bitmap img(files[i]);
+		UINT iw = img.GetWidth();
+		UINT ih = img.GetHeight();
+		Gdiplus::Rect r(0, 0, iw, ih);
+		Gdiplus::BitmapData bmpd;
+		img.LockBits(&r, Gdiplus::ImageLockModeRead, img.GetPixelFormat(), &bmpd);
+		glTexImage2D(targets[i], 0, GL_RGB, iw, ih, 0, GL_BGR_EXT, GL_UNSIGNED_BYTE, bmpd.Scan0);
+		img.UnlockBits(&bmpd);
+		DumpGlErrors("SetupCubeMap");
+	}
+
+	// Typical cube map settings
+	glTexParameterf(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameterf(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameterf(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameterf(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameterf(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+	// Set the CubeMapTex uniform to texture unit 0
+	//uniloc = glGetUniformLocation(programHandle, "CubeMapTex");
+	//if (uniloc >= 0) glUniform1i(uniloc, 0);
+}
+
 void SetupTextures(GLCONTEXT* lpGlContext)
 {
-
+	glActiveTexture(GL_TEXTURE0);
 	UINT iw, ih;
 	const GLsizei numMipMaps = 3;
 
-	Gdiplus::Bitmap *img = Gdiplus::Bitmap::FromFile(L"kitchtilec.png", FALSE);
-	iw = img->GetWidth();
-	ih = img->GetHeight();
+	//Gdiplus::Bitmap *img = Gdiplus::Bitmap::FromFile(L"kitchtilec.png", FALSE);
+	Gdiplus::Bitmap img(L"kitchtilec.png");
+	iw = img.GetWidth();
+	ih = img.GetHeight();
 	Gdiplus::Rect r(0, 0, iw, ih);
 	Gdiplus::BitmapData bmpd;
-	img->LockBits(&r, Gdiplus::ImageLockModeRead, img->GetPixelFormat(), &bmpd);
+	img.LockBits(&r, Gdiplus::ImageLockModeRead, img.GetPixelFormat(), &bmpd);
 
 	glGenTextures(1, &lpGlContext->TexId);
 	glBindTexture(GL_TEXTURE_2D, lpGlContext->TexId);
@@ -424,11 +566,9 @@ void SetupTextures(GLCONTEXT* lpGlContext)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 
-	img->UnlockBits(&bmpd);
+	img.UnlockBits(&bmpd);
 
 	DumpGlErrors("SetupTextures");
-
-	delete img;
 }
 
 void ApplyKeys(float FramesPerSecond, float* mx, float* my, float* mz)
@@ -667,7 +807,7 @@ IndexedTriangleList LoadAndProcessGeometryFile()
 	CUBE* jsonCubes = nullptr;
 
 	cout << "loading geometry file" << endl;
-	jsonCubes = LoadGeometryJson("mz.json", &jsonCubeNum);
+	jsonCubes = LoadGeometryJson("mzf.json", &jsonCubeNum);
 	IndexedTriangleList triList = CreateCubes(jsonCubeNum, jsonCubes);
 	for (unsigned int c = 0; c < jsonCubeNum; c++) {
 		AddStaticActor(triList,
@@ -682,12 +822,6 @@ IndexedTriangleList LoadAndProcessGeometryFile()
 	return triList;
 }
 
-IndexedTriangleList CreateBullets()
-{
-	CUBE bulletCube = { -0.5, -0.5, -0.5, 1.0f, 1.0f, 1.0f };
-	return CreateCubes(1, &bulletCube);
-}
-
 IndexedTriangleList CreateFallingCube()
 {
 	CUBE fallingCube = { -3.0f, -3.0f, -3.0f, 6.0f, 6.0f, 6.0f };
@@ -696,6 +830,15 @@ IndexedTriangleList CreateFallingCube()
 	AddDynamicActor(triList, physx::PxVec3(0, 40, 0), physx::PxVec3(3, 3, 3));
 
 	return triList;
+}
+
+IndexedTriangleList CreateSkyBox()
+{
+	IndexedTriangleList itl = CreateSphere(710.0f, 4, 4);
+	itl.ReverseWinding();
+	itl.CalculateVertexNormals();
+	itl.BindArrays();
+	return itl;
 }
 
 DWORD WINAPI RenderThread(void* parm)
@@ -757,10 +900,12 @@ DWORD WINAPI RenderThread(void* parm)
 	// create triangle lists
 	lpContext.lpIdtFile = new IndexedTriangleList(LoadAndProcessGeometryFile());	// geometry json file
 	lpContext.lpIdtFallingCube = new IndexedTriangleList(CreateFallingCube());		// a falling cube
-	lpContext.lpIdtBulletBox = new IndexedTriangleList(CreateBullets());			// a "bullet" cube
+	lpContext.lpIdtBulletBox = new IndexedTriangleList(CreateSphere(1.0f, 16, 16));
+	IndexedTriangleList SkyBox = CreateSkyBox();
 
 	// load a texture
 	SetupTextures(&lpContext);
+	SetupCubeMap(&lpContext);
 
 	// create the shaders
 	lpContext.lpWorldShader = new WorldShaderProgramContext();
@@ -782,6 +927,20 @@ DWORD WINAPI RenderThread(void* parm)
 
 	// set the current texture (we only have one right now)
 	lpContext.lpWorldShader->SetTexture(0);
+	lpContext.lpWorldShader->SetCubeMapTexture(1);
+
+	glm::vec3 lIntensity(1.0f, 1.0f, 1.0f);
+	glm::vec3 lDiffuse(0.5f, 0.5f, 0.5f);
+	glm::vec3 lAmbient(0.1f, 0.1f, 0.11f);
+	glm::vec3 lSpecular(1.0f, 1.0f, 1.0f);
+	GLfloat lShininess = 16.0f;
+
+	lpContext.lpWorldShader->SetLightIntensity(&lIntensity[0]);
+	lpContext.lpWorldShader->SetLightDiffuse(&lDiffuse[0]);
+	lpContext.lpWorldShader->SetLightAmbient(&lAmbient[0]);
+	lpContext.lpWorldShader->SetLightSpecular(&lSpecular[0]);
+	lpContext.lpWorldShader->SetLightShininess(lShininess);
+	lpContext.lpWorldShader->SetDrawSkyBox(0);
 
 	sb.AddString("Ready...");
 
@@ -851,8 +1010,9 @@ DWORD WINAPI RenderThread(void* parm)
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 			// set the active texture
-			glActiveTexture(GL_TEXTURE0);
+			//glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, lpContext.TexId);
+			glBindTexture(GL_TEXTURE_CUBE_MAP, lpContext.CubeMapTexId);
 
 			// model matrix
 			glm::mat4 ModelMatrix(1.0f);
@@ -875,6 +1035,15 @@ DWORD WINAPI RenderThread(void* parm)
 			lpContext.lpIdtFile->DrawElements();
 			lpContext.lpIdtFile->UnbindAttribs();
 			// END draw the json cubes
+
+			// draw skybox
+			lpContext.lpWorldShader->SetDrawSkyBox(1);
+			SkyBox.BindBuffers();
+			SkyBox.BindAttribs();
+			SkyBox.DrawElements();
+			SkyBox.UnbindAttribs();
+			lpContext.lpWorldShader->SetDrawSkyBox(0);
+			// end draw skybox
 
 			// model matrix (view matrix is the same)
 			lpContext.lpWorldShader->SetModelMatrix(&blockPose[0][0]);
@@ -965,7 +1134,7 @@ DWORD WINAPI RenderThread(void* parm)
 		memset(TextBuffer, 0, 80);
 		sprintf_s(TextBuffer, 80, "%i_fps;_free_time_%i_percent", (int)FramesPerSecond, (int)prc);
 		LONGLONG msToWait = (LONGLONG)remainingCounts * 1000 / perfFreq.QuadPart;
-		if (msToWait > 0) Sleep((DWORD)msToWait);
+		//if (msToWait > 0) Sleep((DWORD)msToWait);
 	}
 
 	// clean up
@@ -978,6 +1147,7 @@ DWORD WINAPI RenderThread(void* parm)
 	delete lpContext.lpScreenShader;
 
 	glDeleteTextures(1, &lpContext.TexId);
+	glDeleteTextures(1, &lpContext.CubeMapTexId);
 
 	lpContext.lpIdtFile->FreeResources();
 	delete lpContext.lpIdtFile;
@@ -1162,7 +1332,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	cout << dmScreenSettings.dmPelsHeight << endl;
 	cout << dmScreenSettings.dmBitsPerPel << endl;
 
-	ChangeDisplaySettings(&dmScreenSettings, CDS_FULLSCREEN);
+	//ChangeDisplaySettings(&dmScreenSettings, CDS_FULLSCREEN);
 
 	HWND hwnd = CreateWindowEx(WS_EX_APPWINDOW, szWindowClass, szTitle, 
 		WS_POPUP, //WS_OVERLAPPEDWINDOW^WS_THICKFRAME,

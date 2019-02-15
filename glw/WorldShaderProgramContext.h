@@ -14,6 +14,15 @@ public:
 	void SetViewMatrix(const GLfloat* value);
 	void SetNormalViewMatrix(const GLfloat* value);
 
+	void SetLightIntensity(const GLfloat* value);
+	void SetLightAmbient(const GLfloat* value);
+	void SetLightDiffuse(const GLfloat* value);
+	void SetLightSpecular(const GLfloat* value);
+	void SetLightShininess(const GLfloat value);
+
+	void SetDrawSkyBox(GLint i);
+	void SetCubeMapTexture(GLint value);
+
 private:
 	GLuint gModelMatrixLoc;
 	GLuint gViewMatrixLoc;
@@ -22,4 +31,13 @@ private:
 	GLuint gNormViewMatrixLoc;
 	GLuint gNormModelMatrixLoc;
 	GLuint gTextureLoc;
+
+	GLuint LightIntensityVec3Loc;
+	GLuint LightAmbientVec3Loc;
+	GLuint LightDiffuseVec3Loc;
+	GLuint LightSpecularVec3Loc;
+	GLuint LightShininessFloatLoc;
+
+	GLuint DrawSkyBoxLoc;
+	GLuint CubeMapTexLoc;
 };

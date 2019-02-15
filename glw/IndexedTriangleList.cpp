@@ -69,7 +69,7 @@ void IndexedTriangleList::FreeResources() {
 	if (this->pxRigidDynamic) this->pxRigidDynamic->release();
 }
 
-void IndexedTriangleList::AddVertex(float vx, float vy, float vz, float tx, float ty, float ni, float nj, float nk)
+void IndexedTriangleList::AddVertex(float vx, float vy, float vz, float tx, float ty, float ni, float nj, float nk, bool dbg)
 {
 	this->Vertices.push_back(vx);
 	this->Vertices.push_back(vy);
@@ -79,13 +79,15 @@ void IndexedTriangleList::AddVertex(float vx, float vy, float vz, float tx, floa
 	this->Vertices.push_back(ni);
 	this->Vertices.push_back(nj);
 	this->Vertices.push_back(nk);
+	if (true == dbg) std::cout << "tex " << tx << ", " << ty << std::endl;
 }
 
-void IndexedTriangleList::AddTriIdices(unsigned int idx1, unsigned int idx2, unsigned int idx3)
+void IndexedTriangleList::AddTriIndices(unsigned int idx1, unsigned int idx2, unsigned int idx3, bool dbg)
 {
 	this->Indices.push_back(idx1);
 	this->Indices.push_back(idx2);
 	this->Indices.push_back(idx3);
+	if(true == dbg) std::cout << "Adding indices " << idx1 << ", " << idx2 << ", " << idx3 << std::endl;
 }
 
 void IndexedTriangleList::SetGLBufferIds(GLuint vertex, GLuint index)
@@ -145,3 +147,70 @@ void IndexedTriangleList::SetRigidStatic(physx::PxRigidStatic* lpStatic, physx::
 physx::PxRigidDynamic* IndexedTriangleList::get_RigidDynamic() { return this->pxRigidDynamic; }
 
 physx::PxRigidStatic* IndexedTriangleList::get_RigidStatic() { return this->pxRigidStatic; }
+
+unsigned int IndexedTriangleList::GetFloatCount()
+{
+	return (unsigned int)this->Vertices.size();
+}
+
+void IndexedTriangleList::ReverseWinding()
+{
+	unsigned int nidx = (unsigned int)this->Indices.size();
+	unsigned int tempi = 0;
+	for (unsigned int i = 0; i < nidx; i += 3)
+	{
+		tempi = this->Indices[i + 1];
+		this->Indices[i + 1] = this->Indices[i + 2];
+		this->Indices[i + 2] = tempi;
+	}
+}
+
+void IndexedTriangleList::CalculateVertexNormals()
+{
+	glm::vec3 sumCross;
+	unsigned int nvrt = (unsigned int)this->Vertices.size() / 8;
+	unsigned int nidx = (unsigned int)this->Indices.size();
+	glm::vec3 va;
+	glm::vec3 vb;
+	glm::vec3 vc;
+	glm::vec3 vab;
+	glm::vec3 vac;
+	glm::vec3 xabc;
+	glm::vec3 sumNormal;
+
+	for (unsigned int v = 0; v < nvrt; v++) {
+		sumCross = glm::vec3(0.0f, 0.0f, 0.0f);
+		for (unsigned int i = 0; i < nidx; i += 3)
+		{
+
+			if (this->Indices[i] == v || this->Indices[i + 1] == v || this->Indices[i + 2] == v)
+			{
+				// calculate a face normal
+				va = glm::vec3(
+					this->Vertices[this->Indices[i] * 8],
+					this->Vertices[(this->Indices[i] * 8) + 1],
+					this->Vertices[(this->Indices[i] * 8) + 2]);
+
+				vb = glm::vec3(
+					this->Vertices[this->Indices[i + 1] * 8],
+					this->Vertices[(this->Indices[i + 1] * 8) + 1],
+					this->Vertices[(this->Indices[i + 1] * 8) + 2]);
+
+				vc = glm::vec3(
+					this->Vertices[this->Indices[i + 2] * 8],
+					this->Vertices[(this->Indices[i + 2] * 8) + 1],
+					this->Vertices[(this->Indices[i + 2] * 8) + 2]);
+
+				vab = vb - va;
+				vac = vc - va;
+				xabc = glm::cross(vac, vab);
+				sumCross += xabc;
+			}
+		}
+
+		sumNormal = glm::normalize(sumCross);
+		this->Vertices[(v * 8) + 5] = sumNormal[0];
+		this->Vertices[(v * 8) + 6] = sumNormal[1];
+		this->Vertices[(v * 8) + 7] = sumNormal[2];
+	}
+}
