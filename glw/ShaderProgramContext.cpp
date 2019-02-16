@@ -100,6 +100,10 @@ void ShaderProgramContext::SetUniformFloat(GLuint loc, GLfloat value)
 
 BOOL ShaderProgramContext::SetupShaders(const char* vtxss, const char* frgss)
 {
+
+	cout << "Validating shader" << endl;
+	DumpGlErrors("SetupShaders");
+
 	GLint success = 0;
 
 	this->ShaderProgram = glCreateProgram();
@@ -124,12 +128,15 @@ BOOL ShaderProgramContext::SetupShaders(const char* vtxss, const char* frgss)
 
 	glAttachShader(this->ShaderProgram, this->VertexShader);
 	glAttachShader(this->ShaderProgram, this->FragmentShader);
-	glLinkProgram(this->ShaderProgram);
 
+	glLinkProgram(this->ShaderProgram);
 	glGetProgramiv(this->ShaderProgram, GL_LINK_STATUS, &success);
 	if (!success) {
 		cout << "ERROR: Failed to link shader program" << endl;
 		return FALSE;
+	}
+	else {
+		cout << "Shader linked" << endl;
 	}
 
 	glValidateProgram(this->ShaderProgram);
@@ -137,6 +144,9 @@ BOOL ShaderProgramContext::SetupShaders(const char* vtxss, const char* frgss)
 	if (!success) {
 		cout << "ERROR: Failed to validate shader program" << endl;
 		return FALSE;
+	}
+	else {
+		cout << "Shader validated" << endl;
 	}
 
 	DumpGlErrors("SetupShaders");

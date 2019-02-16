@@ -52,6 +52,38 @@ PFNGLUNIFORM3FVPROC glUniform3fv;
 PFNGLUNIFORMMATRIX3FVPROC glUniformMatrix3fv;
 PFNGLUNIFORM1FPROC glUniform1f;
 
+typedef BOOL(*PFNWGLCHOOSEPIXELFORMATARBPROC)(HDC hdc,
+	const int *piAttribIList,
+	const FLOAT *pfAttribFList,
+	UINT nMaxFormats,
+	int *piFormats,
+	UINT *nNumFormats);
+PFNWGLCHOOSEPIXELFORMATARBPROC wglChoosePixelFormatARB;
+
+typedef const char *(*PFNWGLGETEXTENSIONSSTRINGARBPROC)(HDC hdc);
+PFNWGLGETEXTENSIONSSTRINGARBPROC wglGetExtensionsStringARB;
+
+typedef HGLRC(*PFNWGLCREATECONTEXTATTRIBSARB)(HDC hDC, HGLRC hshareContext, const int *attribList);
+PFNWGLCREATECONTEXTATTRIBSARB wglCreateContextAttribsARB;
+
+int g_OpenGlAttributes[] = {
+	WGL_DRAW_TO_WINDOW_ARB, GL_TRUE,
+	WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
+	WGL_DOUBLE_BUFFER_ARB, GL_TRUE,
+	WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
+	WGL_ACCELERATION_ARB, WGL_FULL_ACCELERATION_ARB,
+	WGL_COLOR_BITS_ARB, 32,
+	WGL_DEPTH_BITS_ARB, 24,
+	WGL_STENCIL_BITS_ARB, 8,
+	WGL_ALPHA_BITS_ARB, 8,
+	WGL_SAMPLE_BUFFERS_ARB, 1,
+	WGL_SAMPLES_ARB, 4,                        // Check For 4x Multisampling
+	0, 0
+};
+
+bool    arbMultisampleSupported = false;
+int arbMultisampleFormat = 0;
+
 // Global Variables:
 HINSTANCE hInst;                                // current instance
 WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
@@ -61,6 +93,7 @@ WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
 ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
+LRESULT CALLBACK    WndProcTest(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 HGLRC InitOpengl(HWND hwnd, HDC hdc);
 void DumpGlErrors(const char* FunctionName);
@@ -161,6 +194,114 @@ struct {
 	physx::PxCooking* cooking = nullptr;
 } PhysxContext;
 
+bool WGLisExtensionSupported(const char *extension)
+{
+	const size_t extlen = strlen(extension);
+	const char *supported = NULL;
+
+	// Try To Use wglGetExtensionStringARB On Current DC, If Possible
+	wglGetExtensionsStringARB =
+		(PFNWGLGETEXTENSIONSSTRINGARBPROC)wglGetProcAddress("wglGetExtensionsStringARB");
+	cout << "wglGetExtensionsStringARB addr = " << hex << wglGetExtensionsStringARB << dec << endl;
+
+	if (wglGetExtensionsStringARB) {
+		supported = wglGetExtensionsStringARB(wglGetCurrentDC());
+	}
+
+	// If That Failed, Try Standard Opengl Extensions String
+	if (supported == NULL) {
+		supported = (char*)glGetString(GL_EXTENSIONS);
+	}
+
+	// If That Failed Too, Must Be No Extensions Supported
+	if (supported == NULL)
+	{
+		return false;
+	}
+
+	// Begin Examination At Start Of String, Increment By 1 On False Match
+	for (const char* p = supported; ; p++)
+	{
+
+		// Advance p Up To The Next Possible Match
+		p = strstr(p, extension);
+
+		if (p == NULL) {
+			return false;                       // No Match
+		}
+
+		// Make Sure That Match Is At The Start Of The String Or That
+		// The Previous Char Is A Space, Or Else We Could Accidentally
+		// Match "wglFunkywglExtension" With "wglExtension"
+
+		// Also, Make Sure That The Following Character Is Space Or NULL
+		// Or Else "wglExtensionTwo" Might Match "wglExtension"
+		if ((p == supported || p[-1] == ' ') && (p[extlen] == '\0' || p[extlen] == ' '))
+			return true;                        // Match
+	}
+}
+
+bool InitMultisample(HWND hWnd)
+{
+	// See If The String Exists In WGL!
+	if (!WGLisExtensionSupported("WGL_ARB_multisample"))
+	{
+		arbMultisampleSupported = false;
+		return false;
+	}
+
+	// Get Our Pixel Format
+	wglChoosePixelFormatARB =
+		(PFNWGLCHOOSEPIXELFORMATARBPROC)wglGetProcAddress("wglChoosePixelFormatARB");
+	wglCreateContextAttribsARB =
+		(PFNWGLCREATECONTEXTATTRIBSARB)wglGetProcAddress("wglCreateContextAttribsARB");
+
+	if (!wglChoosePixelFormatARB)
+	{
+		// We Didn't Find Support For Multisampling, Set Our Flag And Exit Out.
+		arbMultisampleSupported = false;
+		return false;
+	}
+
+	// Get Our Current Device Context. We Need This In Order To Ask The OpenGL Window What Attributes We Have
+	HDC hDC = GetDC(hWnd);
+
+	int pixelFormat;
+	bool valid;
+	UINT numFormats;
+	float fAttributes[] = { 0,0 };
+
+	// These Attributes Are The Bits We Want To Test For In Our Sample
+	// Everything Is Pretty Standard, The Only One We Want To 
+	// Really Focus On Is The SAMPLE BUFFERS ARB And WGL SAMPLES
+	// These Two Are Going To Do The Main Testing For Whether Or Not
+	// We Support Multisampling On This Hardware
+
+	// First We Check To See If We Can Get A Pixel Format For 4 Samples
+	valid = wglChoosePixelFormatARB(hDC, g_OpenGlAttributes, fAttributes, 1, &pixelFormat, &numFormats);
+
+	// if We Returned True, And Our Format Count Is Greater Than 1
+	if (valid && numFormats >= 1)
+	{
+		arbMultisampleSupported = true;
+		arbMultisampleFormat = pixelFormat;
+		return arbMultisampleSupported;
+	}
+
+	// Our Pixel Format With 4 Samples Failed, Test For 2 Samples
+	g_OpenGlAttributes[21] = 2;
+	valid = wglChoosePixelFormatARB(hDC, g_OpenGlAttributes, fAttributes, 1, &pixelFormat, &numFormats);
+	if (valid && numFormats >= 1)
+	{
+		arbMultisampleSupported = true;
+		arbMultisampleFormat = pixelFormat;
+		return arbMultisampleSupported;
+	}
+
+	// Return The Valid Format
+	return  arbMultisampleSupported;
+}
+
 // to get the vector projection of a on to plane
 void ProjectVecOnPlaneNormal(glm::vec3 &a, glm::vec3 &n, glm::vec3 &c)
 {
@@ -227,9 +368,6 @@ void GetGlFuncs()
 	glUniform1f = (PFNGLUNIFORM1FPROC)wglGetProcAddress("glUniform1f");
 	wglSwapIntervalEXT = (PFNwglSwapIntervalEXT)wglGetProcAddress("wglSwapIntervalEXT");
 	wglGetSwapIntervalEXT  = (PFNwglGetSwapIntervalEXT)wglGetProcAddress("wglGetSwapIntervalEXT");
-
-	cout << "wglSwapIntervalEXT = " << hex << wglSwapIntervalEXT << dec << endl;
-	cout << "wglGetSwapIntervalEXT = " << hex << wglGetSwapIntervalEXT << dec << endl;
 }
 
 void SetupRenderingContext()
@@ -239,6 +377,28 @@ void SetupRenderingContext()
 	glFrontFace(GL_CW);
 	glCullFace(GL_BACK);
 	glEnable(GL_CULL_FACE);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	if (true == arbMultisampleSupported)
+	{
+		cout << "Enabling multi sample" << endl;
+		glEnable(GL_MULTISAMPLE);
+	}
+	else {
+		cout << "Disabling multi sample" << endl;
+		glDisable(GL_MULTISAMPLE);
+	}
+
+	GLint val = 0;
+	glGetIntegerv(SAMPLE_BUFFERS_ARB, &val);
+	cout << "Sample buffers ARB = " << val << endl;
+
+	glGetIntegerv(SAMPLES_ARB, &val);
+	cout << "Samples ARB = " << val << endl;
+
+	GLboolean isMSEnabled = glIsEnabled(GL_MULTISAMPLE);
+	cout << "Multi sample enabled = " << (isMSEnabled == GL_TRUE) << endl;
 }
 
 physx::PxRigidDynamic* createDynamic(const physx::PxTransform& t, 
@@ -307,12 +467,6 @@ IndexedTriangleList CreateSphere(float radius, int rings, int slices)
 	float sliceInterval = 360.0f / slices;
 	float phiInterval = 180.0f / rings;
 
-	cout << "rings = " << rings << endl;
-	cout << "slices = " << slices << endl;
-	cout << "ntri = " << ntri << endl;
-	cout << "nvrt = " << nvrt << endl;
-	cout << "tris per ring = " << trisPerRing << endl;
-
 	// first vertex
 	itl.AddVertex(0, radius, 0, 0.0f, 0.0f, 0, 0, 0);
 
@@ -331,7 +485,6 @@ IndexedTriangleList CreateSphere(float radius, int rings, int slices)
 	// last vertex
 	itl.AddVertex(0, -radius, 0, 0.0f, 1.0f, 0, 0, 0);
 
-	cout << "Added " << itl.GetFloatCount() << " floats" << endl;
 
 	// 0, 1, 2
 	// slices - 1 = 2
@@ -514,7 +667,6 @@ void SetupCubeMap(GLCONTEXT* lpGlContext)
 		GL_TEXTURE_CUBE_MAP_NEGATIVE_Z
 	};
 	for (int i = 0; i < 6; i++) {
-		wcout << L"Loading cube tex " << files[i] << endl;
 		Gdiplus::Bitmap img(files[i]);
 		UINT iw = img.GetWidth();
 		UINT ih = img.GetHeight();
@@ -554,6 +706,7 @@ void SetupTextures(GLCONTEXT* lpGlContext)
 
 	glGenTextures(1, &lpGlContext->TexId);
 	glBindTexture(GL_TEXTURE_2D, lpGlContext->TexId);
+	glEnable(GL_TEXTURE_2D);
 	glTexStorage2D(GL_TEXTURE_2D, numMipMaps, GL_RGBA8, iw, ih);
 	// 32 bit png
 	//glTexImage2D(GL_TEXTURE_2D, 0, 4, iw, ih, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, bmpd.Scan0);
@@ -806,7 +959,6 @@ IndexedTriangleList LoadAndProcessGeometryFile()
 	unsigned int jsonCubeNum = 0;
 	CUBE* jsonCubes = nullptr;
 
-	cout << "loading geometry file" << endl;
 	jsonCubes = LoadGeometryJson("mzf.json", &jsonCubeNum);
 	IndexedTriangleList triList = CreateCubes(jsonCubeNum, jsonCubes);
 	for (unsigned int c = 0; c < jsonCubeNum; c++) {
@@ -930,8 +1082,8 @@ DWORD WINAPI RenderThread(void* parm)
 	lpContext.lpWorldShader->SetCubeMapTexture(1);
 
 	glm::vec3 lIntensity(1.0f, 1.0f, 1.0f);
-	glm::vec3 lDiffuse(0.5f, 0.5f, 0.5f);
-	glm::vec3 lAmbient(0.1f, 0.1f, 0.11f);
+	glm::vec3 lDiffuse(0.3f, 0.3f, 0.3f);
+	glm::vec3 lAmbient(0.7f, 0.7f, 0.7f);
 	glm::vec3 lSpecular(1.0f, 1.0f, 1.0f);
 	GLfloat lShininess = 16.0f;
 
@@ -941,6 +1093,9 @@ DWORD WINAPI RenderThread(void* parm)
 	lpContext.lpWorldShader->SetLightSpecular(&lSpecular[0]);
 	lpContext.lpWorldShader->SetLightShininess(lShininess);
 	lpContext.lpWorldShader->SetDrawSkyBox(0);
+
+	glm::vec3 lightPos(-100.0f, 400.0f, -100.0f);
+	lpContext.lpWorldShader->SetLightPos(&lightPos[0]);
 
 	sb.AddString("Ready...");
 
@@ -980,12 +1135,9 @@ DWORD WINAPI RenderThread(void* parm)
 			g_ey = (float)ppos.y;
 			g_ez = (float)ppos.z;
 
-			glm::vec3 playerPos(g_ex, g_ey, g_ez);
-			lpContext.lpWorldShader->SetPlayerPos(&playerPos[0]);
-
 			if (bulletWait > 0) {
 				bulletWait++;
-				if (bulletWait == 60) bulletWait = 0;
+				if (bulletWait == 30) bulletWait = 0;
 			}
 			if (g_KeysDown & KEY_MOUSE_LB && bulletWait == 0) {
 				sb.AddString("Fire!!");
@@ -1001,7 +1153,7 @@ DWORD WINAPI RenderThread(void* parm)
 				}
 				bullets[nextbullet].lpBulletDyn = createDynamic(player,
 					physx::PxSphereGeometry(1.0f),
-					player.rotate(velVec) * 100);
+					player.rotate(velVec) * 25);
 				nextbullet++;
 				if (nextbullet == 10) nextbullet = 0;
 				bulletWait = 1;
@@ -1197,11 +1349,28 @@ HGLRC InitOpengl(HWND hwnd, HDC hdc)
 	pfd.dwVisibleMask = 0;
 	pfd.dwDamageMask = 0;
 
-	int pixfmt = ChoosePixelFormat(hdc, &pfd);
-	SetPixelFormat(hdc, pixfmt, &pfd);
+	//int pixfmt = ChoosePixelFormat(hdc, &pfd);
 
-	HGLRC hrc = wglCreateContext(hdc);
+	int pixfmt = 0;
+	HGLRC hrc = nullptr;
+	if (!arbMultisampleSupported)
+	{
+		cout << "Using standard pixel format" << endl;
+		pixfmt = ChoosePixelFormat(hdc, &pfd);     // Find A Compatible Pixel Format
+		SetPixelFormat(hdc, pixfmt, &pfd);
+		hrc = wglCreateContext(hdc);
+	}
+	else
+	{
+		cout << "Using multi-sample pixel format" << endl;
+		pixfmt = arbMultisampleFormat;
+		SetPixelFormat(hdc, pixfmt, &pfd);
+		hrc = wglCreateContextAttribsARB(hdc, hrc, g_OpenGlAttributes);
+	}
+
 	wglMakeCurrent(hdc, hrc);
+
+
 	const GLubyte* gl_vers = glGetString(GL_VERSION);
 	if (gl_vers) {
 		cout << "OPEN GL VERSION IS: " << gl_vers << endl;
@@ -1292,7 +1461,29 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 {
     WNDCLASSEXW wcex;
 
-    wcex.cbSize = sizeof(WNDCLASSEX);
+	// test window
+	memset(&wcex, 0, sizeof(WNDCLASSEXW));
+
+	wcex.cbSize = sizeof(WNDCLASSEXW);
+
+	wcex.style = CS_HREDRAW | CS_VREDRAW;
+	wcex.lpfnWndProc = WndProcTest;
+	wcex.cbClsExtra = 0;
+	wcex.cbWndExtra = 0;
+	wcex.hInstance = hInstance;
+	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_GLW));
+	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
+	wcex.hbrBackground = nullptr;
+	wcex.lpszMenuName = nullptr; // MAKEINTRESOURCEW(IDC_GLW);
+	wcex.lpszClassName = L"GLWTestForMultiSampling";
+	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+
+	RegisterClassExW(&wcex);
+
+	// real window
+	memset(&wcex, 0, sizeof(WNDCLASSEXW));
+
+    wcex.cbSize = sizeof(WNDCLASSEXW);
 
     wcex.style          = CS_OWNDC;
     wcex.lpfnWndProc    = WndProc;
@@ -1323,6 +1514,30 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
 	hInst = hInstance; // Store instance handle in our global variable
 
+	HWND hwndTest = CreateWindowEx(WS_EX_APPWINDOW, L"GLWTestForMultiSampling", L"GLWTestForMultiSampling",
+		WS_OVERLAPPEDWINDOW^WS_THICKFRAME,
+		0, 0, 640, 480,
+		nullptr, nullptr, hInstance, nullptr);
+	HDC hdcTest = GetDC(hwndTest);
+	HGLRC hrcTest = InitOpengl(hwndTest, hdcTest);
+	cout << "TEST hwnd = " << hex << hwndTest << dec << endl;
+	cout << "TEST hdc = " << hex << hdcTest << dec << endl;
+	cout << "TEST hrc = " << hex << hrcTest << dec << endl;
+	if (!arbMultisampleSupported)
+	{
+		if (InitMultisample(hwndTest))
+		{
+			cout << "OpenGL supported multi-sample" << endl;
+		}
+		else {
+			cout << "OpenGL does *not* support multi-sample" << endl;
+		}
+	}
+	wglMakeCurrent(hdcTest, nullptr);
+	wglDeleteContext(hrcTest);
+	ReleaseDC(hwndTest, hdcTest);
+	DestroyWindow(hwndTest);
+
 	// look at display settings
 	DEVMODE dmScreenSettings;
 	memset(&dmScreenSettings, 0, sizeof(DEVMODE));
@@ -1332,7 +1547,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	cout << dmScreenSettings.dmPelsHeight << endl;
 	cout << dmScreenSettings.dmBitsPerPel << endl;
 
-	//ChangeDisplaySettings(&dmScreenSettings, CDS_FULLSCREEN);
+	ChangeDisplaySettings(&dmScreenSettings, CDS_FULLSCREEN);
 
 	HWND hwnd = CreateWindowEx(WS_EX_APPWINDOW, szWindowClass, szTitle, 
 		WS_POPUP, //WS_OVERLAPPEDWINDOW^WS_THICKFRAME,
@@ -1471,6 +1686,19 @@ void HandleRawInput(LPARAM lParam)
 	}
 
 	delete[] lpb;
+}
+
+LRESULT CALLBACK WndProcTest(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+		case WM_PAINT:
+			ValidateRect(hWnd, nullptr);
+			break;
+		default:
+			return DefWindowProc(hWnd, message, wParam, lParam);
+	}
+	return 0;
 }
 
 //

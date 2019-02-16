@@ -43,7 +43,7 @@ const char* g_VertexShaderSource =
 "uniform mat4 gProjMatrix;"
 "uniform mat3 gNormViewMatrix;"
 "uniform mat3 gNormModelMatrix;"
-"uniform vec3 gPlayerPos;"
+"uniform vec3 gLightPos;"
 "uniform int DrawSkyBox;"
 "out vec2 fragTexCoord;"
 "out vec3 Position;"
@@ -53,7 +53,7 @@ const char* g_VertexShaderSource =
 "void main() {"
 "  Normal = normalize(gNormViewMatrix * (gNormModelMatrix * vNormal));"
 "  Position = vec3(gViewMatrix * (gModelMatrix * vec4(vPosition, 1.0)));"
-"  LightPos = vec3(gViewMatrix * vec4(gPlayerPos, 1.0));"
+"  LightPos = vec3(gViewMatrix * vec4(gLightPos, 1.0));"
 "  gl_Position = gProjMatrix * (gViewMatrix * (gModelMatrix * vec4(vPosition, 1.0)));"
 "  fragTexCoord = vTexCoord;"
 "  ReflectDir = vPosition;"
@@ -106,7 +106,7 @@ void WorldShaderProgramContext::ResolveLocations()
 	this->gModelMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gModelMatrix");
 	this->gViewMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gViewMatrix");
 	this->gProjMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gProjMatrix");
-	this->gPlayerPosLoc = glGetUniformLocation(this->ShaderProgram, "gPlayerPos");
+	this->gLightPosLoc = glGetUniformLocation(this->ShaderProgram, "gLightPos");
 	this->gNormModelMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gNormModelMatrix");
 	this->gNormViewMatrixLoc = glGetUniformLocation(this->ShaderProgram, "gNormViewMatrix");
 	this->gTextureLoc = glGetUniformLocation(this->ShaderProgram, "texSampler");
@@ -130,9 +130,9 @@ void WorldShaderProgramContext::SetProjMatrix(const GLfloat* value)
 	this->SetUniformMatrix4(this->gProjMatrixLoc, value);
 }
 
-void WorldShaderProgramContext::SetPlayerPos(const GLfloat* value)
+void WorldShaderProgramContext::SetLightPos(const GLfloat* value)
 {
-	this->SetUniformVector3(gPlayerPosLoc, value);
+	this->SetUniformVector3(gLightPosLoc, value);
 }
 
 void WorldShaderProgramContext::SetModelMatrix(const GLfloat* value)

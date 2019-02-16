@@ -8,7 +8,7 @@ public:
 	void ResolveLocations();
 	void SetTexture(GLint value);
 	void SetProjMatrix(const GLfloat* value);
-	void SetPlayerPos(const GLfloat* value);
+	void SetLightPos(const GLfloat* value);
 	void SetModelMatrix(const GLfloat* value);
 	void SetNormalModelMatrix(const GLfloat* value);
 	void SetViewMatrix(const GLfloat* value);
@@ -27,7 +27,7 @@ private:
 	GLuint gModelMatrixLoc;
 	GLuint gViewMatrixLoc;
 	GLuint gProjMatrixLoc;
-	GLuint gPlayerPosLoc;
+	GLuint gLightPosLoc;
 	GLuint gNormViewMatrixLoc;
 	GLuint gNormModelMatrixLoc;
 	GLuint gTextureLoc;
