@@ -1,6 +1,5 @@
 
 #include "stdafx.h"
-#include "glw.h"
 
 #pragma comment(lib, "opengl32.lib")
 #pragma comment(lib, "Gdiplus.lib")
@@ -51,6 +50,7 @@ PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv;
 PFNGLUNIFORM3FVPROC glUniform3fv;
 PFNGLUNIFORMMATRIX3FVPROC glUniformMatrix3fv;
 PFNGLUNIFORM1FPROC glUniform1f;
+PFNGLUNIFORM4FVPROC glUniform4fv;
 
 typedef BOOL(*PFNWGLCHOOSEPIXELFORMATARBPROC)(HDC hdc,
 	const int *piAttribIList,
@@ -102,7 +102,7 @@ void ClearGLError();
 HANDLE hRenderThread = nullptr;
 HANDLE hStopEvent = nullptr;
 
-float g_ex = 15.0f, g_ey = 11.0f, g_ez = 15.0f;
+float g_ex = 0.0f, g_ey = 11.0f, g_ez = 0.0f;
 float g_az = 0.0f, g_el = 0.0f;
 
 DWORD g_KeysDown = 0;
@@ -368,6 +368,7 @@ void GetGlFuncs()
 	glUniform1f = (PFNGLUNIFORM1FPROC)wglGetProcAddress("glUniform1f");
 	wglSwapIntervalEXT = (PFNwglSwapIntervalEXT)wglGetProcAddress("wglSwapIntervalEXT");
 	wglGetSwapIntervalEXT  = (PFNwglGetSwapIntervalEXT)wglGetProcAddress("wglGetSwapIntervalEXT");
+	glUniform4fv = (PFNGLUNIFORM4FVPROC)wglGetProcAddress("glUniform4fv");
 }
 
 void SetupRenderingContext()
@@ -450,209 +451,10 @@ void AddStaticActor(IndexedTriangleList& trilist, physx::PxVec3 pos, physx::PxVe
 	trilist.SetRigidStatic(lpStatic, lpShp);
 }
 
-IndexedTriangleList CreateSphere(float radius, int rings, int slices)
-{
-
-	IndexedTriangleList itl;
-	GLuint buffers[2];
-
-	// number of triangles
-	// first and last ring have 1 tri per slice
-	// the rest have two tri's per slice
-	int ntri = (2 * slices) + ((rings - 2) * slices * 2);
-	int nvrt = ((rings - 1) * slices) + 2;
-	int trisPerRing = 0;
-	if (rings > 2) trisPerRing = 2 * slices;
-	float theta, phi;
-	float sliceInterval = 360.0f / slices;
-	float phiInterval = 180.0f / rings;
-
-	// first vertex
-	itl.AddVertex(0, radius, 0, 0.0f, 0.0f, 0, 0, 0);
-
-	for (phi = phiInterval; phi < 180.0f; phi += phiInterval)
-	{
-		float phir = phi / 180.0f * CONSTPI;
-		for (theta = 0; theta < 360.0f; theta += sliceInterval)
-		{
-			float thetar = theta / 180.0f * CONSTPI;
-			itl.AddVertex(radius * cosf(thetar) * sinf(phir), radius * cosf(phir), radius * sinf(thetar) * sinf(phir),
-				theta / 360.0f, phi / 180.0f, 
-				0, 0, 0);
-		}
-	}
-
-	// last vertex
-	itl.AddVertex(0, -radius, 0, 0.0f, 1.0f, 0, 0, 0);
-
-
-	// 0, 1, 2
-	// slices - 1 = 2
-	for (int i = 0; i < slices; i++) {
-
-		if (i == (slices - 1)) { // last slice
-			itl.AddTriIndices(0, i + 1, 1);
-		}
-		else {
-			itl.AddTriIndices(0, i + 1, i + 2);
-		}
-
-		if (i == (slices - 1)) { // last slice
-			itl.AddTriIndices(nvrt - 1, (nvrt - slices) - 1, nvrt - 2);
-		}
-		else {
-			itl.AddTriIndices(nvrt - 1, (nvrt - slices) + i, ((nvrt - slices) + i) - 1);
-		}
-	}
-
-	for (int r = 1; r < (rings - 1); r++) {
-		for (int s = 0; s < slices; s++) {
-
-			int vertsToAdd = (r - 1) * slices;
-
-			if (s == (slices - 1)) {
-				// last slice
-				itl.AddTriIndices(s + 1 + vertsToAdd, s + 1 + slices + vertsToAdd, (s - slices) + 2 + vertsToAdd);
-			}
-			else {
-				itl.AddTriIndices(s + 1 + vertsToAdd, s + 1 + slices + vertsToAdd, s + 2 + vertsToAdd);
-			}
-
-			if (s == (slices - 1)) {
-				// last slice
-				itl.AddTriIndices((s - slices) + 2 + vertsToAdd, s + 1 + slices + vertsToAdd, s + 2 + vertsToAdd);
-			}
-			else {
-				itl.AddTriIndices(s + 2 + vertsToAdd, s + 1 + slices + vertsToAdd, s + 2 + slices + vertsToAdd);
-			}
-
-		}
-	}
-
-	//itl.ReverseWinding();
-	itl.CalculateVertexNormals();
-
-	glGenBuffers(2, buffers);
-	itl.SetGLBufferIds(buffers[0], buffers[1]);
-	itl.BindArrays();
-
-	return itl;
-
-}
-
-IndexedTriangleList CreateCubes(unsigned int numCubes, CUBE* cubeList)
-{
-
-	IndexedTriangleList trilist;
-
-	GLuint buffers[2];
-
-	// for testing this is only the x/y face
-	// 4 * 8 = one face
-	// 8 * 8 = two faces
-	// 12 * 8 = three faces
-	// 16 * 8 = four faces
-	int CubeDataSize = 24 * 8; // 24 * 8;
-	int VertDataSize = CubeDataSize * numCubes;
-	//lpList->Vertices = (float*)malloc(VertDataSize * sizeof(float));
-	//memset(lpList->Vertices, 0, VertDataSize * sizeof(float));
-
-	// for testing this is only the x/y face
-	// 6 = one face
-	// 12 = two faces
-	// 18 = three faces
-	// 24 = four faces
-	int CubeIndexSize = 36; // 36;
-	int IndexDataSize = CubeIndexSize * numCubes;
-	//lpList->Indices = (unsigned int*)malloc(IndexDataSize * sizeof(unsigned int));
-	//memset(lpList->Indices, 0, IndexDataSize * sizeof(unsigned int));
-
-	for (unsigned int c = 0; c < numCubes; c++) {
-		//unsigned int* iptr = (unsigned int*)(lpList->Indices + (c * CubeIndexSize));
-		//float* ptr = (float*)(lpList->Vertices + (c * CubeDataSize));
-		CUBE* cb = cubeList + c;
-
-		// face 1 vertices x/y neg z
-		// pos x,y,z		                                                    tex u,v		                     norm i,j,k
-		trilist.AddVertex(cb->ox, cb->oy, cb->oz, 0.0f, cb->dy / 2.0f, 0.0f, 0.0f, -1.0f);
-		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz, cb->dx / 2.0f, 0.0f, 0.0f, 0.0f, -1.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz, cb->dx / 2.0f, cb->dy / 2.0f, 0.0f, 0.0f, -1.0f);
-
-		// face 1 indexes
-		trilist.AddTriIndices((c * 24) + 0, (c * 24) + 2, (c * 24) + 1);
-		trilist.AddTriIndices((c * 24) + 0, (c * 24) + 3, (c * 24) + 2);
-
-		// face 2 vertices x/y pos z
-		// pos x,y,z
-		trilist.AddVertex(cb->ox, cb->oy, cb->oz + cb->dz, 0.0f, cb->dy / 2.0f, 0.0f, 0.0f, 1.0f);
-		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz + cb->dz, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz + cb->dz, cb->dx / 2.0f, 0.0f, 0.0f, 0.0f, 1.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz + cb->dz, cb->dx / 2.0f, cb->dy / 2.0f, 0.0f, 0.0f, 1.0f);
-
-		trilist.AddTriIndices((c * 24) + 4, (c * 24) + 5, (c * 24) + 6);
-		trilist.AddTriIndices((c * 24) + 4, (c * 24) + 6, (c * 24) + 7);
-
-		// face 3 vertices x/y pos z
-		trilist.AddVertex(cb->ox, cb->oy, cb->oz, 0.0f, cb->dz / 2.0f, 0.0f, -1.0f, 0.0f);
-		trilist.AddVertex(cb->ox, cb->oy, cb->oz + cb->dz, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz + cb->dz, cb->dx / 2.0f, 0.0f, 0.0f, -1.0f, 0.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz, cb->dx / 2.0f, cb->dz / 2.0f, 0.0f, -1.0f, 0.0f);
-
-		// face 3 indexes
-		trilist.AddTriIndices((c * 24) + 8, (c * 24) + 9, (c * 24) + 10);
-		trilist.AddTriIndices((c * 24) + 8, (c * 24) + 10, (c * 24) + 11);
-
-		// face 4 vertices x/y pos z
-		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz, 0.0f, cb->dz / 2.0f, 0.0f, 1.0f, 0.0f);
-		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz + cb->dz, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz + cb->dz, cb->dx / 2.0f, 0.0f, 0.0f, 1.0f, 0.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz, cb->dx / 2.0f, cb->dz / 2.0f, 0.0f, 1.0f, 0.0f);
-
-		// face 4 indexes
-		trilist.AddTriIndices((c * 24) + 12, (c * 24) + 14, (c * 24) + 13);
-		trilist.AddTriIndices((c * 24) + 12, (c * 24) + 15, (c * 24) + 14);
-
-		// face 4 vertices x/y pos z
-		trilist.AddVertex(cb->ox, cb->oy, cb->oz, 0.0f, cb->dz / 2.0f, -1.0f, 0.0f, 0.0f);
-		trilist.AddVertex(cb->ox, cb->oy, cb->oz + cb->dz, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f);
-		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz + cb->dz, cb->dy / 2.0f, 0.0f, -1.0f, 0.0f, 0.0f);
-		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz, cb->dy / 2.0f, cb->dz / 2.0f, -1.0f, 0.0f, 0.0f);
-
-		// face 4 indexes
-		trilist.AddTriIndices((c * 24) + 16, (c * 24) + 18, (c * 24) + 17);
-		trilist.AddTriIndices((c * 24) + 16, (c * 24) + 19, (c * 24) + 18);
-
-		// face 4 vertices x/y pos z
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz, 0.0f, cb->dz / 2.0f, 1.0f, 0.0f, 0.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz + cb->dz, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz + cb->dz, cb->dy / 2.0f, 0.0f, 1.0f, 0.0f, 0.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz, cb->dy / 2.0f, cb->dz / 2.0f, 1.0f, 0.0f, 0.0f);
-
-		// face 4 indexes
-		trilist.AddTriIndices((c * 24) + 20, (c * 24) + 21, (c * 24) + 22);
-		trilist.AddTriIndices((c * 24) + 20, (c * 24) + 22, (c * 24) + 23);
-	}
-
-	glGenBuffers(2, buffers);
-	//trilist.VertexArrayBuffer = buffers[0];
-	//trilist.IndexArrayBuffer = buffers[1];
-	trilist.SetGLBufferIds(buffers[0], buffers[1]);
-	//lpList->NumIndices = IndexDataSize;
-
-	//glBindBuffer(GL_ARRAY_BUFFER, lpList->VertexArrayBuffer);
-	//glBufferData(GL_ARRAY_BUFFER, VertDataSize * sizeof(float), lpList->Vertices, GL_STATIC_DRAW);
-
-	//glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, lpList->IndexArrayBuffer);
-	//glBufferData(GL_ELEMENT_ARRAY_BUFFER, IndexDataSize * sizeof(unsigned int), lpList->Indices, GL_STATIC_DRAW);
-	trilist.BindArrays();
-
-	return trilist;
-}
 
 void SetupCubeMap(GLCONTEXT* lpGlContext)
 {
-	glActiveTexture(GL_TEXTURE1);
+	// gen and bind
 	glGenTextures(1, &lpGlContext->CubeMapTexId);
 	glBindTexture(GL_TEXTURE_CUBE_MAP, lpGlContext->CubeMapTexId);
 	const wchar_t* files[] = {
@@ -692,7 +494,6 @@ void SetupCubeMap(GLCONTEXT* lpGlContext)
 
 void SetupTextures(GLCONTEXT* lpGlContext)
 {
-	glActiveTexture(GL_TEXTURE0);
 	UINT iw, ih;
 	const GLsizei numMipMaps = 3;
 
@@ -704,9 +505,9 @@ void SetupTextures(GLCONTEXT* lpGlContext)
 	Gdiplus::BitmapData bmpd;
 	img.LockBits(&r, Gdiplus::ImageLockModeRead, img.GetPixelFormat(), &bmpd);
 
+	// 1. gen and bind
 	glGenTextures(1, &lpGlContext->TexId);
 	glBindTexture(GL_TEXTURE_2D, lpGlContext->TexId);
-	glEnable(GL_TEXTURE_2D);
 	glTexStorage2D(GL_TEXTURE_2D, numMipMaps, GL_RGBA8, iw, ih);
 	// 32 bit png
 	//glTexImage2D(GL_TEXTURE_2D, 0, 4, iw, ih, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, bmpd.Scan0);
@@ -882,6 +683,31 @@ void DisposePhysx()
 	if (PhysxContext.mFoundation) PhysxContext.mFoundation->release();
 }
 
+
+BOOL InitGlFont(HDC hdc, GLCONTEXT *lpContext)
+{
+	ClearGLError();
+	lpContext->fontBase = glGenLists(96);
+	if (glGetError()) return FALSE;
+	return wglUseFontBitmaps(hdc, 32, 96, lpContext->fontBase);
+}
+
+void FreeGlFont(GLCONTEXT *lpContext)
+{
+	glDeleteLists(lpContext->fontBase, 96);
+}
+
+
+IndexedTriangleList CreateFallingCube()
+{
+	CUBE fallingCube = { -3.0f, -3.0f, -3.0f, 6.0f, 6.0f, 6.0f };
+
+	IndexedTriangleList triList = IndexedTriangleList::CreateCubes(1, &fallingCube);
+	AddDynamicActor(triList, physx::PxVec3(0, 40, 0), physx::PxVec3(3, 3, 3));
+
+	return triList;
+}
+
 CUBE* LoadGeometryJson(const char* filename, unsigned int* numCubes)
 {
 
@@ -941,26 +767,14 @@ CUBE* LoadGeometryJson(const char* filename, unsigned int* numCubes)
 	return lpCubes;
 }
 
-BOOL InitGlFont(HDC hdc, GLCONTEXT *lpContext)
-{
-	ClearGLError();
-	lpContext->fontBase = glGenLists(96);
-	if (glGetError()) return FALSE;
-	return wglUseFontBitmaps(hdc, 32, 96, lpContext->fontBase);
-}
-
-void FreeGlFont(GLCONTEXT *lpContext)
-{
-	glDeleteLists(lpContext->fontBase, 96);
-}
-
 IndexedTriangleList LoadAndProcessGeometryFile()
 {
 	unsigned int jsonCubeNum = 0;
 	CUBE* jsonCubes = nullptr;
 
 	jsonCubes = LoadGeometryJson("mzf.json", &jsonCubeNum);
-	IndexedTriangleList triList = CreateCubes(jsonCubeNum, jsonCubes);
+	IndexedTriangleList triList = IndexedTriangleList::CreateCubes(jsonCubeNum, jsonCubes);
+
 	for (unsigned int c = 0; c < jsonCubeNum; c++) {
 		AddStaticActor(triList,
 			physx::PxVec3(
@@ -972,25 +786,6 @@ IndexedTriangleList LoadAndProcessGeometryFile()
 	}
 	if (jsonCubes) free(jsonCubes);
 	return triList;
-}
-
-IndexedTriangleList CreateFallingCube()
-{
-	CUBE fallingCube = { -3.0f, -3.0f, -3.0f, 6.0f, 6.0f, 6.0f };
-
-	IndexedTriangleList triList = CreateCubes(1, &fallingCube);
-	AddDynamicActor(triList, physx::PxVec3(0, 40, 0), physx::PxVec3(3, 3, 3));
-
-	return triList;
-}
-
-IndexedTriangleList CreateSkyBox()
-{
-	IndexedTriangleList itl = CreateSphere(710.0f, 4, 4);
-	itl.ReverseWinding();
-	itl.CalculateVertexNormals();
-	itl.BindArrays();
-	return itl;
 }
 
 DWORD WINAPI RenderThread(void* parm)
@@ -1052,8 +847,10 @@ DWORD WINAPI RenderThread(void* parm)
 	// create triangle lists
 	lpContext.lpIdtFile = new IndexedTriangleList(LoadAndProcessGeometryFile());	// geometry json file
 	lpContext.lpIdtFallingCube = new IndexedTriangleList(CreateFallingCube());		// a falling cube
-	lpContext.lpIdtBulletBox = new IndexedTriangleList(CreateSphere(1.0f, 16, 16));
-	IndexedTriangleList SkyBox = CreateSkyBox();
+	lpContext.lpIdtBulletBox = new IndexedTriangleList(IndexedTriangleList::CreateSphere(1.0f, 16, 16));
+	IndexedTriangleList SkyBox = IndexedTriangleList::CreateSkyBox();
+	IndexedTriangleList cyl = IndexedTriangleList::CreateCylinder(1.0f, 6.0f, 10, 16);
+	IndexedTriangleList cone = IndexedTriangleList::CreateCone(10.0f, 20.0f, 16);
 
 	// load a texture
 	SetupTextures(&lpContext);
@@ -1067,6 +864,14 @@ DWORD WINAPI RenderThread(void* parm)
 	//   first - set it as currrent
 	lpContext.lpWorldShader->SetAsCurrent();
 
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, lpContext.TexId);
+	lpContext.lpWorldShader->SetTexture(0); // set uniform
+
+	glActiveTexture(GL_TEXTURE0 + 1);
+	glBindTexture(GL_TEXTURE_CUBE_MAP, lpContext.CubeMapTexId);
+	lpContext.lpWorldShader->SetCubeMapTexture(1); // set uniform
+
 	//   set the projection matrix
 	GetClientRect(hWnd, &clientRect);
 	glm::mat4 proj = glm::perspective(45.0f,
@@ -1076,10 +881,6 @@ DWORD WINAPI RenderThread(void* parm)
 
 	// while we have a reference to the client size, set the viewport
 	glViewport(0, 0, clientRect.right - clientRect.left, clientRect.bottom - clientRect.top);
-
-	// set the current texture (we only have one right now)
-	lpContext.lpWorldShader->SetTexture(0);
-	lpContext.lpWorldShader->SetCubeMapTexture(1);
 
 	glm::vec3 lIntensity(1.0f, 1.0f, 1.0f);
 	glm::vec3 lDiffuse(0.3f, 0.3f, 0.3f);
@@ -1096,6 +897,7 @@ DWORD WINAPI RenderThread(void* parm)
 
 	glm::vec3 lightPos(-100.0f, 400.0f, -100.0f);
 	lpContext.lpWorldShader->SetLightPos(&lightPos[0]);
+	lpContext.lpWorldShader->SetUseMatColor(0);
 
 	sb.AddString("Ready...");
 
@@ -1161,11 +963,6 @@ DWORD WINAPI RenderThread(void* parm)
 
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-			// set the active texture
-			//glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, lpContext.TexId);
-			glBindTexture(GL_TEXTURE_CUBE_MAP, lpContext.CubeMapTexId);
-
 			// model matrix
 			glm::mat4 ModelMatrix(1.0f);
 			lpContext.lpWorldShader->SetModelMatrix(&ModelMatrix[0][0]);
@@ -1196,6 +993,36 @@ DWORD WINAPI RenderThread(void* parm)
 			SkyBox.UnbindAttribs();
 			lpContext.lpWorldShader->SetDrawSkyBox(0);
 			// end draw skybox
+
+			// cylinder
+			ModelMatrix = glm::translate(glm::vec3(10.0f, 3.0f, 10.0f));
+			lpContext.lpWorldShader->SetModelMatrix(&ModelMatrix[0][0]);
+			normModelMatrix = glm::inverse(glm::transpose(glm::mat3(ModelMatrix)));
+			lpContext.lpWorldShader->SetNormalModelMatrix(&normModelMatrix[0][0]);
+			lpContext.lpWorldShader->SetUseMatColor(1);
+			glm::vec4 matColor(0.7f, 0.5f, 0.3f, 1.0f);
+			lpContext.lpWorldShader->SetMatColor(&matColor[0]);
+			cyl.BindBuffers();
+			cyl.BindAttribs();
+			cyl.DrawElements();
+			cyl.UnbindAttribs();
+			lpContext.lpWorldShader->SetUseMatColor(0);
+			// end cylinder
+
+			// cone
+			ModelMatrix = glm::translate(glm::vec3(10.0f, 16.0f, 10.0f));
+			lpContext.lpWorldShader->SetModelMatrix(&ModelMatrix[0][0]);
+			normModelMatrix = glm::inverse(glm::transpose(glm::mat3(ModelMatrix)));
+			lpContext.lpWorldShader->SetNormalModelMatrix(&normModelMatrix[0][0]);
+			lpContext.lpWorldShader->SetUseMatColor(1);
+			matColor = glm::vec4(0.0f, 0.8f, 0.0f, 1.0f);
+			lpContext.lpWorldShader->SetMatColor(&matColor[0]);
+			cone.BindBuffers();
+			cone.BindAttribs();
+			cone.DrawElements();
+			cone.UnbindAttribs();
+			lpContext.lpWorldShader->SetUseMatColor(0);
+			// end cylinder
 
 			// model matrix (view matrix is the same)
 			lpContext.lpWorldShader->SetModelMatrix(&blockPose[0][0]);

@@ -21,8 +21,16 @@ public:
 	physx::PxRigidDynamic* get_RigidDynamic();
 	physx::PxRigidStatic* get_RigidStatic();
 	unsigned int GetFloatCount();
+	unsigned int GetIntCount();
 	void CalculateVertexNormals();
 	void ReverseWinding();
+
+	static IndexedTriangleList CreateCone(float radius, float height, int slices);
+	static IndexedTriangleList CreateCylinder(float radius, float height, int rings, int slices);
+	static IndexedTriangleList CreateSphere(float radius, int rings, int slices);
+	static IndexedTriangleList CreateSkyBox();
+	static IndexedTriangleList CreateCubes(unsigned int numCubes, CUBE* cubeList);
+
 private:
 	GLuint VertexArrayBuffer;
 	GLuint IndexArrayBuffer;

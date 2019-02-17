@@ -52,10 +52,12 @@ using namespace Gdiplus;
 #include <rapidjson/writer.h>
 #include <rapidjson/stringbuffer.h>
 
+#include "glw.h"
 #include "ScreenBuffer.h"
 #include "IndexedTriangleList.h"
 #include "ShaderProgramContext.h"
 #include "WorldShaderProgramContext.h"
+#include "ColorWorldShader.h"
 
 #define WGL_SAMPLE_BUFFERS_ARB  0x2041
 #define WGL_SAMPLES_ARB     0x2042

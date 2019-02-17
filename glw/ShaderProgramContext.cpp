@@ -35,6 +35,7 @@ extern PFNGLTEXSTORAGE2DPROC glTexStorage2D;
 extern PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
 extern PFNGLUNIFORMMATRIX3FVPROC glUniformMatrix3fv;
 extern PFNGLUNIFORM1FPROC glUniform1f;
+extern PFNGLUNIFORM4FVPROC glUniform4fv;
 
 void DumpGlErrors(const char* FunctionName);
 
@@ -96,6 +97,11 @@ void ShaderProgramContext::SetUniformMatrix3(GLuint loc, const GLfloat* value)
 void ShaderProgramContext::SetUniformFloat(GLuint loc, GLfloat value)
 {
 	glUniform1f(loc, value);
+}
+
+void ShaderProgramContext::SetUniformVector4(GLuint loc, const GLfloat* value)
+{
+	glUniform4fv(loc, 1, value);
 }
 
 BOOL ShaderProgramContext::SetupShaders(const char* vtxss, const char* frgss)

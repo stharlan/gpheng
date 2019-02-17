@@ -1,11 +1,11 @@
 #pragma once
 
-class WorldShaderProgramContext : public ShaderProgramContext
+class ColorWorldShader : public ShaderProgramContext
 {
 public:
-	WorldShaderProgramContext();
-	~WorldShaderProgramContext();
-	void ResolveLocations();
+	ColorWorldShader();
+	~ColorWorldShader();
+
 	void SetTexture(GLint value);
 	void SetProjMatrix(const GLfloat* value);
 	void SetLightPos(const GLfloat* value);
@@ -23,9 +23,6 @@ public:
 	void SetDrawSkyBox(GLint i);
 	void SetCubeMapTexture(GLint value);
 
-	void SetUseMatColor(GLint i);
-	void SetMatColor(const GLfloat* value);
-
 private:
 	GLuint gModelMatrixLoc;
 	GLuint gViewMatrixLoc;
@@ -33,7 +30,6 @@ private:
 	GLuint gLightPosLoc;
 	GLuint gNormViewMatrixLoc;
 	GLuint gNormModelMatrixLoc;
-	GLuint gTextureLoc;
 
 	GLuint LightIntensityVec3Loc;
 	GLuint LightAmbientVec3Loc;
@@ -41,10 +37,8 @@ private:
 	GLuint LightSpecularVec3Loc;
 	GLuint LightShininessFloatLoc;
 
-	GLuint DrawSkyBoxLoc;
-	GLuint CubeMapTexLoc;
+	GLuint MatColorLoc;
 
-	GLuint MatColorLoc;		// "uniform vec4 MatColor;"
-	GLuint UseMatColorLoc;	// "uniform int UseMatColor;"
-
+	void ResolveLocations();
 };
+
