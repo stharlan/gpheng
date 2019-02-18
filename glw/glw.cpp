@@ -102,7 +102,7 @@ void ClearGLError();
 HANDLE hRenderThread = nullptr;
 HANDLE hStopEvent = nullptr;
 
-float g_ex = 0.0f, g_ey = 11.0f, g_ez = 0.0f;
+float g_ex = 50.0f, g_ey = 110.0f, g_ez = 50.0f;
 float g_az = 0.0f, g_el = 0.0f;
 
 DWORD g_KeysDown = 0;
@@ -144,8 +144,8 @@ private:
 typedef struct {
 	WorldShaderProgramContext* lpWorldShader;
 	ScreenShaderProgramContext* lpScreenShader;
-	GLuint TexId;
-	IndexedTriangleList* lpIdtFile;
+	//GLuint TexId;
+	//IndexedTriangleList* lpIdtFile;
 	IndexedTriangleList* lpIdtFallingCube;
 	IndexedTriangleList* lpIdtBulletBox;
 	GLuint fontBase;
@@ -192,6 +192,10 @@ struct {
 	physx::PxControllerManager *cmanager = nullptr;
 	physx::PxController *pChar = nullptr;
 	physx::PxCooking* cooking = nullptr;
+
+	physx::PxHeightField* aHeightField = nullptr;
+	physx::PxRigidStatic* actor = nullptr;
+	physx::PxShape* aHeightFieldShape = nullptr;
 } PhysxContext;
 
 bool WGLisExtensionSupported(const char *extension)
@@ -492,38 +496,38 @@ void SetupCubeMap(GLCONTEXT* lpGlContext)
 	//if (uniloc >= 0) glUniform1i(uniloc, 0);
 }
 
-void SetupTextures(GLCONTEXT* lpGlContext)
-{
-	UINT iw, ih;
-	const GLsizei numMipMaps = 3;
-
-	//Gdiplus::Bitmap *img = Gdiplus::Bitmap::FromFile(L"kitchtilec.png", FALSE);
-	Gdiplus::Bitmap img(L"kitchtilec.png");
-	iw = img.GetWidth();
-	ih = img.GetHeight();
-	Gdiplus::Rect r(0, 0, iw, ih);
-	Gdiplus::BitmapData bmpd;
-	img.LockBits(&r, Gdiplus::ImageLockModeRead, img.GetPixelFormat(), &bmpd);
-
-	// 1. gen and bind
-	glGenTextures(1, &lpGlContext->TexId);
-	glBindTexture(GL_TEXTURE_2D, lpGlContext->TexId);
-	glTexStorage2D(GL_TEXTURE_2D, numMipMaps, GL_RGBA8, iw, ih);
-	// 32 bit png
-	//glTexImage2D(GL_TEXTURE_2D, 0, 4, iw, ih, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, bmpd.Scan0);
-	// 24 bit png
-	//glTexImage2D(GL_TEXTURE_2D, 0, 3, iw, ih, 0, GL_RGB, GL_UNSIGNED_BYTE, bmpd.Scan0);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, iw, ih, GL_BGRA_EXT, GL_UNSIGNED_BYTE, bmpd.Scan0);
-	glGenerateMipmap(GL_TEXTURE_2D);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-
-	img.UnlockBits(&bmpd);
-
-	DumpGlErrors("SetupTextures");
-}
+//void SetupTextures(GLCONTEXT* lpGlContext)
+//{
+//	UINT iw, ih;
+//	const GLsizei numMipMaps = 3;
+//
+//	//Gdiplus::Bitmap *img = Gdiplus::Bitmap::FromFile(L"kitchtilec.png", FALSE);
+//	Gdiplus::Bitmap img(L"kitchtilec.png");
+//	iw = img.GetWidth();
+//	ih = img.GetHeight();
+//	Gdiplus::Rect r(0, 0, iw, ih);
+//	Gdiplus::BitmapData bmpd;
+//	img.LockBits(&r, Gdiplus::ImageLockModeRead, img.GetPixelFormat(), &bmpd);
+//
+//	// 1. gen and bind
+//	glGenTextures(1, &lpGlContext->TexId);
+//	glBindTexture(GL_TEXTURE_2D, lpGlContext->TexId);
+//	glTexStorage2D(GL_TEXTURE_2D, numMipMaps, GL_RGBA8, iw, ih);
+//	// 32 bit png
+//	//glTexImage2D(GL_TEXTURE_2D, 0, 4, iw, ih, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, bmpd.Scan0);
+//	// 24 bit png
+//	//glTexImage2D(GL_TEXTURE_2D, 0, 3, iw, ih, 0, GL_RGB, GL_UNSIGNED_BYTE, bmpd.Scan0);
+//	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, iw, ih, GL_BGRA_EXT, GL_UNSIGNED_BYTE, bmpd.Scan0);
+//	glGenerateMipmap(GL_TEXTURE_2D);
+//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+//
+//	img.UnlockBits(&bmpd);
+//
+//	DumpGlErrors("SetupTextures");
+//}
 
 void ApplyKeys(float FramesPerSecond, float* mx, float* my, float* mz)
 {
@@ -645,6 +649,13 @@ bool InitializePhysx()
 	desc.radius = 1.0f;
 	PhysxContext.pChar = PhysxContext.cmanager->createController(desc);
 
+	PhysxContext.cooking = PxCreateCooking(PX_PHYSICS_VERSION, 
+		*PhysxContext.mFoundation, 
+		physx::PxCookingParams(physx::PxTolerancesScale()));
+	if (!PhysxContext.cooking) {
+		cout << "PxCreateCooking failed!" << endl;
+	}
+
 	return true;
 }
 
@@ -670,6 +681,9 @@ physx::PxMat44 PhysxSimulate(physx::PxRigidDynamic* pFallingCubeDynamic, BULLET_
 
 void DisposePhysx()
 {
+	if (PhysxContext.aHeightFieldShape) PhysxContext.aHeightFieldShape->release();
+	if (PhysxContext.actor) PhysxContext.actor->release();
+	if (PhysxContext.aHeightField) PhysxContext.aHeightField->release();
 	if (PhysxContext.cooking) PhysxContext.cooking->release();
 	if (PhysxContext.pChar) PhysxContext.pChar->release();
 	if (PhysxContext.cmanager) PhysxContext.cmanager->release();
@@ -788,6 +802,124 @@ IndexedTriangleList LoadAndProcessGeometryFile()
 	return triList;
 }
 
+IndexedTriangleList MakeHeightField()
+{
+	UINT32 hfw = 0;
+	UINT32 hfh = 0;
+	float HeightScale = 4.0f;
+	float HorizScale = 8.0f;
+
+	Gdiplus::Bitmap img(L"heightfield.png");
+	cout << "height field width x height = " << img.GetWidth() << " x " << img.GetHeight() << endl;
+	hfw = img.GetWidth();
+	hfh = img.GetHeight();
+	Gdiplus::Rect r(0, 0, img.GetWidth(), img.GetHeight());
+	Gdiplus::BitmapData bmpd;
+	//cout << "pixfmt = " << img.GetPixelFormat() << endl;
+	//if (img.GetPixelFormat() == PixelFormat32bppARGB) cout << "32 bit rgb" << endl;
+	//pixfmt = 2498570
+	//Gdiplus::PixelFormat
+	img.LockBits(&r, Gdiplus::ImageLockModeRead, img.GetPixelFormat(), &bmpd);
+	UINT32* ptr = (UINT32*)bmpd.Scan0;
+	UINT32 max = 0;
+	UINT32 min = 0xffffffff;
+	UINT32 nvals = img.GetWidth() * img.GetHeight();
+	for (UINT32 i = 0; i < nvals; i++) {
+		if (ptr[i] > max) max = ptr[i];
+		if (ptr[i] < min) min = ptr[i];
+	}
+	cout << "max " << max << endl;
+	cout << "min " << min << endl;
+	cout << "diff " << max - min << endl;
+
+	physx::PxHeightFieldSample* samples = (physx::PxHeightFieldSample*)malloc(sizeof(physx::PxHeightFieldSample) * nvals);
+	for (UINT y = 0; y < hfh; y++) {
+		for (UINT x = 0; x < hfw; x++) {
+			UINT i = (y * hfw) + x;
+			samples[i].height = MulDiv(ptr[i] - min, 10, max - min);
+			samples[i].materialIndex0 = 0;
+			samples[i].materialIndex1 = 1;
+			samples[i].clearTessFlag();
+		}
+	}
+
+	img.UnlockBits(&bmpd);
+
+	// ** make hight field
+	physx::PxHeightFieldDesc hfDesc;
+	hfDesc.format = physx::PxHeightFieldFormat::eS16_TM;
+	hfDesc.nbColumns = hfw;
+	hfDesc.nbRows = hfh;
+	hfDesc.samples.data = samples;
+	hfDesc.samples.stride = sizeof(physx::PxHeightFieldSample);
+
+	PhysxContext.aHeightField = PhysxContext.cooking->createHeightField(hfDesc,
+		PhysxContext.mPhysics->getPhysicsInsertionCallback());
+	if (!PhysxContext.aHeightField) cout << "ERROR: Failed to create height field" << endl;
+
+	physx::PxHeightFieldGeometry hfGeom(PhysxContext.aHeightField, physx::PxMeshGeometryFlags(), HeightScale, HorizScale, HorizScale);
+
+	// create the actor for heightfield
+	PhysxContext.actor = PhysxContext.mPhysics->createRigidStatic(physx::PxTransform(physx::PxIdentity));
+	if (!PhysxContext.actor) cout << "ERROR: Failed to create actor" << endl;
+
+	PhysxContext.aHeightFieldShape = physx::PxRigidActorExt::createExclusiveShape(*PhysxContext.actor,
+		hfGeom, *PhysxContext.gMaterial);
+	if (!PhysxContext.aHeightFieldShape) cout << "ERROR: Failed to create height field shape" << endl;
+
+	PhysxContext.aHeightFieldShape->setLocalPose(physx::PxTransform(physx::PxVec3(
+		((float)hfw * HorizScale) / -2.0f, 
+		0.0f, 
+		((float)hfh * HorizScale) / -2.0f
+	)));
+
+	PhysxContext.gScene->addActor(*PhysxContext.actor);
+	
+	// make itl
+	// ** make an ITL
+	IndexedTriangleList itl;
+	GLuint buffers[2];
+
+	for (UINT y = 0; y < hfh; y++) {
+		for (UINT x = 0; x < hfw; x++) {
+			//int index = (y * hfw) + x;
+			int index = (x * hfh) + y;
+			short s00 = samples[index].height;
+			itl.AddVertex((float)x * HorizScale, (float)s00 * HeightScale, (float)y * HorizScale, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+		}
+	}
+
+	for (UINT y = 0; y < hfh-1; y++) {
+		for (UINT x = 0; x < hfw-1; x++) {
+			//int index0 = (y * hfw) + x;
+			//int index1 = (y * hfw) + x + 1;
+			//int index2 = ((y + 1) * hfw) + x + 1;
+			//int index3 = ((y + 1) * hfw) + x;
+			int index0 = (x * hfh) + y;
+			int index1 = ((x+1) * hfh) + y;
+			int index2 = ((x+1) * hfh) + (y+1);
+			int index3 = (x * hfh) + (y+1);
+			itl.AddTriIndices(index0, index2, index1);
+			itl.AddTriIndices(index0, index3, index2);
+		}
+	}
+
+	itl.CalculateVertexNormals();
+	glGenBuffers(2, buffers);
+	itl.SetGLBufferIds(buffers[0], buffers[1]);
+	itl.BindArrays();
+	glm::mat4 modelMatrix = glm::translate(glm::vec3(
+		((float)hfw * HorizScale) / -2.0f,
+		0.0f,
+		((float)hfh * HorizScale) / -2.0f
+	));
+	itl.SetModelMatrix(modelMatrix);
+
+	free(samples);
+
+	return itl;
+}
+
 DWORD WINAPI RenderThread(void* parm)
 {
 	HWND hWnd = (HWND)parm;
@@ -845,15 +977,18 @@ DWORD WINAPI RenderThread(void* parm)
 	SetupRenderingContext();
 
 	// create triangle lists
-	lpContext.lpIdtFile = new IndexedTriangleList(LoadAndProcessGeometryFile());	// geometry json file
+	//lpContext.lpIdtFile = new IndexedTriangleList(LoadAndProcessGeometryFile());	// geometry json file
 	lpContext.lpIdtFallingCube = new IndexedTriangleList(CreateFallingCube());		// a falling cube
 	lpContext.lpIdtBulletBox = new IndexedTriangleList(IndexedTriangleList::CreateSphere(1.0f, 16, 16));
 	IndexedTriangleList SkyBox = IndexedTriangleList::CreateSkyBox();
 	IndexedTriangleList cyl = IndexedTriangleList::CreateCylinder(1.0f, 6.0f, 10, 16);
 	IndexedTriangleList cone = IndexedTriangleList::CreateCone(10.0f, 20.0f, 16);
+	IndexedTriangleList terrain = MakeHeightField();
 
 	// load a texture
-	SetupTextures(&lpContext);
+	//SetupTextures(&lpContext);
+	TextureContext tileTexture(L"kitchtilec.png");
+	TextureContext grassTexture(L"grass1.png");
 	SetupCubeMap(&lpContext);
 
 	// create the shaders
@@ -864,8 +999,8 @@ DWORD WINAPI RenderThread(void* parm)
 	//   first - set it as currrent
 	lpContext.lpWorldShader->SetAsCurrent();
 
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, lpContext.TexId);
+	// this will contain a 2d texture
+	// it will change below
 	lpContext.lpWorldShader->SetTexture(0); // set uniform
 
 	glActiveTexture(GL_TEXTURE0 + 1);
@@ -886,6 +1021,7 @@ DWORD WINAPI RenderThread(void* parm)
 	glm::vec3 lDiffuse(0.3f, 0.3f, 0.3f);
 	glm::vec3 lAmbient(0.7f, 0.7f, 0.7f);
 	glm::vec3 lSpecular(1.0f, 1.0f, 1.0f);
+	glm::vec3 lSpecularNone(0.0f, 0.0f, 0.0f);
 	GLfloat lShininess = 16.0f;
 
 	lpContext.lpWorldShader->SetLightIntensity(&lIntensity[0]);
@@ -978,14 +1114,25 @@ DWORD WINAPI RenderThread(void* parm)
 			glm::mat3 normViewMatrix = glm::inverse(glm::transpose(glm::mat3(ViewMatrix)));
 			lpContext.lpWorldShader->SetNormalViewMatrix(&normViewMatrix[0][0]);
 
+			grassTexture.Bind(GL_TEXTURE0);
+
 			// BEGIN draw the json cubes
-			lpContext.lpIdtFile->BindBuffers();
-			lpContext.lpIdtFile->BindAttribs();
-			lpContext.lpIdtFile->DrawElements();
-			lpContext.lpIdtFile->UnbindAttribs();
+			lpContext.lpWorldShader->SetModelMatrix(terrain.GetModelMatrixPointer());
+			normModelMatrix = terrain.GetNormalModelMatrix();
+			lpContext.lpWorldShader->SetNormalModelMatrix(&normModelMatrix[0][0]);
+			lpContext.lpWorldShader->SetLightSpecular(&lSpecularNone[0]);
+			terrain.BindBuffers();
+			terrain.BindAttribs();
+			terrain.DrawElements();
+			terrain.UnbindAttribs();
+			lpContext.lpWorldShader->SetLightSpecular(&lSpecular[0]);
 			// END draw the json cubes
 
 			// draw skybox
+			ModelMatrix = glm::mat4(1.0);
+			lpContext.lpWorldShader->SetModelMatrix(&ModelMatrix[0][0]);
+			normModelMatrix = glm::inverse(glm::transpose(glm::mat3(ModelMatrix)));
+			lpContext.lpWorldShader->SetNormalModelMatrix(&normModelMatrix[0][0]);
 			lpContext.lpWorldShader->SetDrawSkyBox(1);
 			SkyBox.BindBuffers();
 			SkyBox.BindAttribs();
@@ -1032,6 +1179,9 @@ DWORD WINAPI RenderThread(void* parm)
 			glmNormModelMatrix[2][0] = blockPose[2][0]; glmNormModelMatrix[2][1] = blockPose[2][1]; glmNormModelMatrix[2][2] = blockPose[2][2];
 			normModelMatrix = glm::inverse(glm::transpose(glmNormModelMatrix));
 			lpContext.lpWorldShader->SetNormalModelMatrix(&normModelMatrix[0][0]);
+
+			tileTexture.Bind(GL_TEXTURE0);
+			//lpContext.lpWorldShader->SetTexture(0); // set uniform
 
 			// BEGIN draw the falling block
 			lpContext.lpIdtFallingCube->BindBuffers();
@@ -1125,11 +1275,11 @@ DWORD WINAPI RenderThread(void* parm)
 	lpContext.lpScreenShader->FreeResources();
 	delete lpContext.lpScreenShader;
 
-	glDeleteTextures(1, &lpContext.TexId);
+	//glDeleteTextures(1, &lpContext.TexId);
 	glDeleteTextures(1, &lpContext.CubeMapTexId);
 
-	lpContext.lpIdtFile->FreeResources();
-	delete lpContext.lpIdtFile;
+	//lpContext.lpIdtFile->FreeResources();
+	//delete lpContext.lpIdtFile;
 	lpContext.lpIdtFallingCube->FreeResources();
 	delete lpContext.lpIdtFallingCube;
 	lpContext.lpIdtBulletBox->FreeResources();

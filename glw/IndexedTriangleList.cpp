@@ -557,4 +557,7 @@ IndexedTriangleList IndexedTriangleList::CreateCubes(unsigned int numCubes, CUBE
 	return trilist;
 }
 
-
+void IndexedTriangleList::SetModelMatrix(glm::mat4& m)
+{
+	this->modelMatrix = m;
+}

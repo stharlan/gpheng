@@ -58,6 +58,7 @@ using namespace Gdiplus;
 #include "ShaderProgramContext.h"
 #include "WorldShaderProgramContext.h"
 #include "ColorWorldShader.h"
+#include "TextureContext.h"
 
 #define WGL_SAMPLE_BUFFERS_ARB  0x2041
 #define WGL_SAMPLES_ARB     0x2042

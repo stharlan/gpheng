@@ -24,6 +24,15 @@ public:
 	unsigned int GetIntCount();
 	void CalculateVertexNormals();
 	void ReverseWinding();
+	void SetModelMatrix(glm::mat4& m);
+	inline float* GetModelMatrixPointer()
+	{
+		return &modelMatrix[0][0];
+	}
+	glm::mat3 GetNormalModelMatrix()
+	{
+		return glm::inverse(glm::transpose(glm::mat3(this->modelMatrix)));
+	}
 
 	static IndexedTriangleList CreateCone(float radius, float height, int slices);
 	static IndexedTriangleList CreateCylinder(float radius, float height, int rings, int slices);
@@ -39,4 +48,5 @@ private:
 	physx::PxRigidStatic* pxRigidStatic;
 	physx::PxRigidDynamic* pxRigidDynamic;
 	physx::PxShape* pxShape;
+	glm::mat4 modelMatrix;
 };
