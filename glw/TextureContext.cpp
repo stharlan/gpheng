@@ -33,7 +33,7 @@ extern PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
 extern PFNGLUNIFORMMATRIX3FVPROC glUniformMatrix3fv;
 
 
-TextureContext::TextureContext(const wchar_t* filename)
+TextureContext::TextureContext(const wchar_t* filename, bool Is24Bit)
 {
 	UINT iw, ih;
 	const GLsizei numMipMaps = 3;
@@ -53,7 +53,12 @@ TextureContext::TextureContext(const wchar_t* filename)
 	//glTexImage2D(GL_TEXTURE_2D, 0, 4, iw, ih, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, bmpd.Scan0);
 	// 24 bit png
 	//glTexImage2D(GL_TEXTURE_2D, 0, 3, iw, ih, 0, GL_RGB, GL_UNSIGNED_BYTE, bmpd.Scan0);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, iw, ih, GL_BGRA_EXT, GL_UNSIGNED_BYTE, bmpd.Scan0);
+	if (true == Is24Bit) {
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, iw, ih, GL_BGR, GL_UNSIGNED_BYTE, bmpd.Scan0);
+	}
+	else {
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, iw, ih, GL_BGRA_EXT, GL_UNSIGNED_BYTE, bmpd.Scan0);
+	}
 	glGenerateMipmap(GL_TEXTURE_2D);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);

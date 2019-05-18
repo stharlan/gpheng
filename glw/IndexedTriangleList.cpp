@@ -79,7 +79,7 @@ void IndexedTriangleList::AddVertex(float vx, float vy, float vz, float tx, floa
 	this->Vertices.push_back(ni);
 	this->Vertices.push_back(nj);
 	this->Vertices.push_back(nk);
-	if (true == dbg) std::cout << "tex " << tx << ", " << ty << std::endl;
+	if (true == dbg) std::cout << vx << ", " << vy << ", " << vz << std::endl;
 }
 
 void IndexedTriangleList::AddTriIndices(unsigned int idx1, unsigned int idx2, unsigned int idx3, bool dbg)
@@ -447,7 +447,7 @@ IndexedTriangleList IndexedTriangleList::CreateCone(float radius, float height, 
 	return itl;
 }
 
-IndexedTriangleList IndexedTriangleList::CreateCubes(unsigned int numCubes, CUBE* cubeList)
+IndexedTriangleList IndexedTriangleList::CreateCubes(unsigned int numCubes, CUBE* cubeList, float UVDivisor)
 {
 
 	IndexedTriangleList trilist;
@@ -481,10 +481,10 @@ IndexedTriangleList IndexedTriangleList::CreateCubes(unsigned int numCubes, CUBE
 
 		// face 1 vertices x/y neg z
 		// pos x,y,z		                                                    tex u,v		                     norm i,j,k
-		trilist.AddVertex(cb->ox, cb->oy, cb->oz, 0.0f, cb->dy / 2.0f, 0.0f, 0.0f, -1.0f);
+		trilist.AddVertex(cb->ox, cb->oy, cb->oz, 0.0f, cb->dy / UVDivisor, 0.0f, 0.0f, -1.0f);
 		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz, cb->dx / 2.0f, 0.0f, 0.0f, 0.0f, -1.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz, cb->dx / 2.0f, cb->dy / 2.0f, 0.0f, 0.0f, -1.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz, cb->dx / UVDivisor, 0.0f, 0.0f, 0.0f, -1.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz, cb->dx / UVDivisor, cb->dy / UVDivisor, 0.0f, 0.0f, -1.0f);
 
 		// face 1 indexes
 		trilist.AddTriIndices((c * 24) + 0, (c * 24) + 2, (c * 24) + 1);
@@ -492,49 +492,49 @@ IndexedTriangleList IndexedTriangleList::CreateCubes(unsigned int numCubes, CUBE
 
 		// face 2 vertices x/y pos z
 		// pos x,y,z
-		trilist.AddVertex(cb->ox, cb->oy, cb->oz + cb->dz, 0.0f, cb->dy / 2.0f, 0.0f, 0.0f, 1.0f);
+		trilist.AddVertex(cb->ox, cb->oy, cb->oz + cb->dz, 0.0f, cb->dy / UVDivisor, 0.0f, 0.0f, 1.0f);
 		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz + cb->dz, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz + cb->dz, cb->dx / 2.0f, 0.0f, 0.0f, 0.0f, 1.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz + cb->dz, cb->dx / 2.0f, cb->dy / 2.0f, 0.0f, 0.0f, 1.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz + cb->dz, cb->dx / UVDivisor, 0.0f, 0.0f, 0.0f, 1.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz + cb->dz, cb->dx / UVDivisor, cb->dy / UVDivisor, 0.0f, 0.0f, 1.0f);
 
 		trilist.AddTriIndices((c * 24) + 4, (c * 24) + 5, (c * 24) + 6);
 		trilist.AddTriIndices((c * 24) + 4, (c * 24) + 6, (c * 24) + 7);
 
 		// face 3 vertices x/y pos z
-		trilist.AddVertex(cb->ox, cb->oy, cb->oz, 0.0f, cb->dz / 2.0f, 0.0f, -1.0f, 0.0f);
+		trilist.AddVertex(cb->ox, cb->oy, cb->oz, 0.0f, cb->dz / UVDivisor, 0.0f, -1.0f, 0.0f);
 		trilist.AddVertex(cb->ox, cb->oy, cb->oz + cb->dz, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz + cb->dz, cb->dx / 2.0f, 0.0f, 0.0f, -1.0f, 0.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz, cb->dx / 2.0f, cb->dz / 2.0f, 0.0f, -1.0f, 0.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz + cb->dz, cb->dx / UVDivisor, 0.0f, 0.0f, -1.0f, 0.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz, cb->dx / UVDivisor, cb->dz / UVDivisor, 0.0f, -1.0f, 0.0f);
 
 		// face 3 indexes
 		trilist.AddTriIndices((c * 24) + 8, (c * 24) + 9, (c * 24) + 10);
 		trilist.AddTriIndices((c * 24) + 8, (c * 24) + 10, (c * 24) + 11);
 
 		// face 4 vertices x/y pos z
-		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz, 0.0f, cb->dz / 2.0f, 0.0f, 1.0f, 0.0f);
+		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz, 0.0f, cb->dz / UVDivisor, 0.0f, 1.0f, 0.0f);
 		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz + cb->dz, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz + cb->dz, cb->dx / 2.0f, 0.0f, 0.0f, 1.0f, 0.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz, cb->dx / 2.0f, cb->dz / 2.0f, 0.0f, 1.0f, 0.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz + cb->dz, cb->dx / UVDivisor, 0.0f, 0.0f, 1.0f, 0.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz, cb->dx / UVDivisor, cb->dz / UVDivisor, 0.0f, 1.0f, 0.0f);
 
 		// face 4 indexes
 		trilist.AddTriIndices((c * 24) + 12, (c * 24) + 14, (c * 24) + 13);
 		trilist.AddTriIndices((c * 24) + 12, (c * 24) + 15, (c * 24) + 14);
 
 		// face 4 vertices x/y pos z
-		trilist.AddVertex(cb->ox, cb->oy, cb->oz, 0.0f, cb->dz / 2.0f, -1.0f, 0.0f, 0.0f);
+		trilist.AddVertex(cb->ox, cb->oy, cb->oz, 0.0f, cb->dz / UVDivisor, -1.0f, 0.0f, 0.0f);
 		trilist.AddVertex(cb->ox, cb->oy, cb->oz + cb->dz, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f);
-		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz + cb->dz, cb->dy / 2.0f, 0.0f, -1.0f, 0.0f, 0.0f);
-		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz, cb->dy / 2.0f, cb->dz / 2.0f, -1.0f, 0.0f, 0.0f);
+		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz + cb->dz, cb->dy / UVDivisor, 0.0f, -1.0f, 0.0f, 0.0f);
+		trilist.AddVertex(cb->ox, cb->oy + cb->dy, cb->oz, cb->dy / UVDivisor, cb->dz / UVDivisor, -1.0f, 0.0f, 0.0f);
 
 		// face 4 indexes
 		trilist.AddTriIndices((c * 24) + 16, (c * 24) + 18, (c * 24) + 17);
 		trilist.AddTriIndices((c * 24) + 16, (c * 24) + 19, (c * 24) + 18);
 
 		// face 4 vertices x/y pos z
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz, 0.0f, cb->dz / 2.0f, 1.0f, 0.0f, 0.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz, 0.0f, cb->dz / UVDivisor, 1.0f, 0.0f, 0.0f);
 		trilist.AddVertex(cb->ox + cb->dx, cb->oy, cb->oz + cb->dz, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz + cb->dz, cb->dy / 2.0f, 0.0f, 1.0f, 0.0f, 0.0f);
-		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz, cb->dy / 2.0f, cb->dz / 2.0f, 1.0f, 0.0f, 0.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz + cb->dz, cb->dy / UVDivisor, 0.0f, 1.0f, 0.0f, 0.0f);
+		trilist.AddVertex(cb->ox + cb->dx, cb->oy + cb->dy, cb->oz, cb->dy / UVDivisor, cb->dz / UVDivisor, 1.0f, 0.0f, 0.0f);
 
 		// face 4 indexes
 		trilist.AddTriIndices((c * 24) + 20, (c * 24) + 21, (c * 24) + 22);
@@ -560,4 +560,17 @@ IndexedTriangleList IndexedTriangleList::CreateCubes(unsigned int numCubes, CUBE
 void IndexedTriangleList::SetModelMatrix(glm::mat4& m)
 {
 	this->modelMatrix = m;
+}
+
+void IndexedTriangleList::GetVertex(unsigned int index, float *refFloats)
+{
+	unsigned int a = index * 8;
+	for (int i = 0; i < 8; i++) {
+		refFloats[i] = this->Vertices[a + i];
+	}
+}
+
+unsigned int IndexedTriangleList::GetIndex(unsigned int index)
+{
+	return this->Indices[index];
 }

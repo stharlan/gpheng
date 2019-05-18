@@ -38,7 +38,10 @@ public:
 	static IndexedTriangleList CreateCylinder(float radius, float height, int rings, int slices);
 	static IndexedTriangleList CreateSphere(float radius, int rings, int slices);
 	static IndexedTriangleList CreateSkyBox();
-	static IndexedTriangleList CreateCubes(unsigned int numCubes, CUBE* cubeList);
+	static IndexedTriangleList CreateCubes(unsigned int numCubes, CUBE* cubeList, float UVDivisor);
+
+	void GetVertex(unsigned int index, float *refFloats);
+	unsigned int GetIndex(unsigned int index);
 
 private:
 	GLuint VertexArrayBuffer;

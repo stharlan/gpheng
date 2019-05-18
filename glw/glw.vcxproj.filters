@@ -51,6 +51,9 @@
     <ClInclude Include="TextureContext.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="vmf_parser.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -72,6 +75,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TextureContext.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmf_parser.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\quickhull\QuickHull.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

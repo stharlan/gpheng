@@ -1,7 +1,9 @@
 
+
 #include "stdafx.h"
 
 #pragma comment(lib, "opengl32.lib")
+#pragma comment(lib, "glu32.lib")
 #pragma comment(lib, "Gdiplus.lib")
 #pragma comment(lib, "Physx_64.lib")
 #pragma comment(lib, "PhysxFoundation_64.lib")
@@ -51,6 +53,17 @@ PFNGLUNIFORM3FVPROC glUniform3fv;
 PFNGLUNIFORMMATRIX3FVPROC glUniformMatrix3fv;
 PFNGLUNIFORM1FPROC glUniform1f;
 PFNGLUNIFORM4FVPROC glUniform4fv;
+PFNGLTEXIMAGE2DMULTISAMPLEPROC glTexImage2DMultisample;
+PFNGLGENFRAMEBUFFERSPROC glGenFramebuffers;
+PFNGLBINDFRAMEBUFFERPROC glBindFramebuffer;
+PFNGLFRAMEBUFFERTEXTURE2DPROC glFramebufferTexture2D;
+PFNGLCHECKFRAMEBUFFERSTATUSPROC glCheckFramebufferStatus;
+PFNGLBLITFRAMEBUFFERPROC glBlitFramebuffer;
+PFNGLGENRENDERBUFFERSPROC glGenRenderbuffers;
+PFNGLBINDRENDERBUFFERPROC glBindRenderbuffer;
+PFNGLRENDERBUFFERSTORAGEPROC glRenderbufferStorage;
+PFNGLFRAMEBUFFERRENDERBUFFERPROC glFramebufferRenderbuffer;
+PFNGLRENDERBUFFERSTORAGEMULTISAMPLEPROC glRenderbufferStorageMultisample;
 
 typedef BOOL(*PFNWGLCHOOSEPIXELFORMATARBPROC)(HDC hdc,
 	const int *piAttribIList,
@@ -102,7 +115,7 @@ void ClearGLError();
 HANDLE hRenderThread = nullptr;
 HANDLE hStopEvent = nullptr;
 
-float g_ex = 50.0f, g_ey = 110.0f, g_ez = 50.0f;
+float g_ex = 50.0f, g_ey = 6.0f, g_ez = 50.0f;
 float g_az = 0.0f, g_el = 0.0f;
 
 DWORD g_KeysDown = 0;
@@ -113,6 +126,7 @@ const DWORD KEY_D = 0x08;
 const DWORD KEY_Q = 0x10;
 const DWORD KEY_E = 0x20;
 const DWORD KEY_MOUSE_LB = 0x40;
+const DWORD KEY_SPACE = 0x80;
 
 const char* g_VtxShaderScreen = "#version 150\n"
 "in vec2 position;"
@@ -127,6 +141,63 @@ const char* g_FrgShaderScreen = "#version 150\n"
 "{"
 "  outColor = vec4(1.0, 1.0, 1.0, 1.0);"
 "}";
+
+///////////////////////////////////////////////////////////////////////////////
+// GLU_TESS CALLBACKS
+///////////////////////////////////////////////////////////////////////////////
+void CALLBACK tessBeginCB(GLenum which)
+{
+	glBegin(which);
+	cout << "beginning " << which << endl;
+}
+void CALLBACK tessEndCB()
+{
+	glEnd();
+	cout << "ending" << endl;
+}
+void CALLBACK tessVertexCB(const GLvoid *data)
+{
+	// cast back to double type
+	const GLdouble *ptr = (const GLdouble*)data;
+	glVertex3dv(ptr);
+	cout << ptr[0] << ", " << ptr[1] << ", " << ptr[2] << endl;
+}
+void CALLBACK tessErrorCB(GLenum errorCode)
+{
+	const GLubyte *errorStr;
+
+	errorStr = gluErrorString(errorCode);
+	cerr << "[ERROR]: " << errorStr << endl;
+}
+
+ostream& operator<<(ostream& os, const glm::vec3& dt)
+{
+	os << dt[0] << ", " << dt[1] << ", " << dt[2];
+	return os;
+}
+
+ostream& operator<<(ostream& os, const physx::PxVec3& dt)
+{
+	os << dt.x << ", " << dt.y << ", " << dt.z << endl;
+	return os;
+}
+
+struct physx_pxvec3_compare{
+	bool operator() (const physx::PxVec3& lhs, const physx::PxVec3& rhs) const
+	{
+		if (lhs.x >= rhs.x) {
+			if (lhs.y >= rhs.y) {
+				return lhs.z < rhs.z;
+			}
+			else {
+				return true;
+			}
+		}
+		else {
+			return true;
+		}
+	}
+};
 
 class ScreenShaderProgramContext : public ShaderProgramContext
 {
@@ -147,7 +218,7 @@ typedef struct {
 	//GLuint TexId;
 	//IndexedTriangleList* lpIdtFile;
 	IndexedTriangleList* lpIdtFallingCube;
-	IndexedTriangleList* lpIdtBulletBox;
+	//IndexedTriangleList* lpIdtBulletBox;
 	GLuint fontBase;
 	GLuint CubeMapTexId;
 } GLCONTEXT;
@@ -178,6 +249,18 @@ public:
 	}
 };
 
+typedef struct STRUCT_TriangleMeshContext {
+	physx::PxTriangleMesh* aTriangleMesh;
+	physx::PxRigidStatic *tmActor;
+	physx::PxShape* pShape;
+} TriangleMeshContext;
+
+typedef struct STRUCT_ConvexMesContext {
+	physx::PxConvexMesh *pxConvexMesh;
+	physx::PxRigidStatic *rigidStatic;
+	physx::PxShape* pShape;
+} ConvexMeshContext;
+
 struct {
 	MyAllocator gAallocator;
 	UserErrorCallback errcbk;
@@ -196,12 +279,18 @@ struct {
 	physx::PxHeightField* aHeightField = nullptr;
 	physx::PxRigidStatic* actor = nullptr;
 	physx::PxShape* aHeightFieldShape = nullptr;
+
+	std::vector<TriangleMeshContext> tmeshes;
+	std::vector<ConvexMeshContext> cmeshes;
+	
 } PhysxContext;
 
 bool WGLisExtensionSupported(const char *extension)
 {
 	const size_t extlen = strlen(extension);
 	const char *supported = NULL;
+
+	return false;
 
 	// Try To Use wglGetExtensionStringARB On Current DC, If Possible
 	wglGetExtensionsStringARB =
@@ -373,10 +462,24 @@ void GetGlFuncs()
 	wglSwapIntervalEXT = (PFNwglSwapIntervalEXT)wglGetProcAddress("wglSwapIntervalEXT");
 	wglGetSwapIntervalEXT  = (PFNwglGetSwapIntervalEXT)wglGetProcAddress("wglGetSwapIntervalEXT");
 	glUniform4fv = (PFNGLUNIFORM4FVPROC)wglGetProcAddress("glUniform4fv");
+	glTexImage2DMultisample = (PFNGLTEXIMAGE2DMULTISAMPLEPROC)wglGetProcAddress("glTexImage2DMultisample");
+	glGenFramebuffers = (PFNGLGENFRAMEBUFFERSPROC)wglGetProcAddress("glGenFramebuffers");
+	glBindFramebuffer = (PFNGLBINDFRAMEBUFFERPROC)wglGetProcAddress("glBindFramebuffer");
+	glFramebufferTexture2D = (PFNGLFRAMEBUFFERTEXTURE2DPROC)wglGetProcAddress("glFramebufferTexture2D");
+	glCheckFramebufferStatus = (PFNGLCHECKFRAMEBUFFERSTATUSPROC)wglGetProcAddress("glCheckFramebufferStatus");
+	glBlitFramebuffer = (PFNGLBLITFRAMEBUFFERPROC)wglGetProcAddress("glBlitFramebuffer");
+	glGenRenderbuffers = (PFNGLGENRENDERBUFFERSPROC)wglGetProcAddress("glGenRenderbuffers");
+	glBindRenderbuffer = (PFNGLBINDRENDERBUFFERPROC)wglGetProcAddress("glBindRenderbuffer");
+	glRenderbufferStorage = (PFNGLRENDERBUFFERSTORAGEPROC)wglGetProcAddress("glRenderbufferStorage");
+	glFramebufferRenderbuffer = (PFNGLFRAMEBUFFERRENDERBUFFERPROC)wglGetProcAddress("glFramebufferRenderbuffer");
+	glRenderbufferStorageMultisample = (PFNGLRENDERBUFFERSTORAGEMULTISAMPLEPROC)wglGetProcAddress("glRenderbufferStorageMultisample");
 }
 
-void SetupRenderingContext()
+GLuint SetupRenderingContext(int width, int height)
 {
+
+	cout << "--> SetupRenderingContext" << endl;
+
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glEnable(GL_DEPTH_TEST);
 	glFrontFace(GL_CW);
@@ -404,6 +507,46 @@ void SetupRenderingContext()
 
 	GLboolean isMSEnabled = glIsEnabled(GL_MULTISAMPLE);
 	cout << "Multi sample enabled = " << (isMSEnabled == GL_TRUE) << endl;
+
+	//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+
+	// multi sample fbo
+	glEnable(GL_MULTISAMPLE);
+
+	GLint maxSamples = 0;
+	glGetIntegerv(GL_MAX_SAMPLES, &maxSamples);
+
+	GLsizei NumSamples = maxSamples;
+	GLuint msfbofbuf = 0;
+	glGenFramebuffers(1, &msfbofbuf);
+	glBindFramebuffer(GL_FRAMEBUFFER, msfbofbuf);
+
+	GLuint m_ColorId = 0;
+	glGenRenderbuffers(1, &m_ColorId);
+	glBindRenderbuffer(GL_RENDERBUFFER, m_ColorId);
+	glRenderbufferStorageMultisample(GL_RENDERBUFFER, NumSamples, GL_RGBA8, width, height);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, m_ColorId);
+
+	GLuint DepthRenderBuffer = 0;
+	glGenRenderbuffers(1, &DepthRenderBuffer);
+	glBindRenderbuffer(GL_RENDERBUFFER, DepthRenderBuffer);
+	glRenderbufferStorageMultisample(GL_RENDERBUFFER, NumSamples, GL_DEPTH_COMPONENT, width, height);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, DepthRenderBuffer);
+
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+		cout << "ERROR: Failed to properly create framebuffer: " << glCheckFramebufferStatus(GL_FRAMEBUFFER) << endl;
+	}
+	else {
+		cout << "Frame buffer status is complete; max samples = " << maxSamples << endl;
+	}
+
+	DumpGlErrors("SetupRenderingContext");
+
+	return msfbofbuf;
+
 }
 
 physx::PxRigidDynamic* createDynamic(const physx::PxTransform& t, 
@@ -529,7 +672,7 @@ void SetupCubeMap(GLCONTEXT* lpGlContext)
 //	DumpGlErrors("SetupTextures");
 //}
 
-void ApplyKeys(float FramesPerSecond, float* mx, float* my, float* mz)
+float ApplyKeys(float FramesPerSecond, float* mx, float* my, float* mz, float DownwardVelocity)
 {
 	float px = 0.0f, pz = 0.0f, py = 0.0f;
 	float EyeAzimuthInRadians = 0.0f;
@@ -591,8 +734,21 @@ void ApplyKeys(float FramesPerSecond, float* mx, float* my, float* mz)
 	// it's calculated based on gravity being -9.81 m/s
 	// where, over a period of 1/60th sec, the player will
 	// accelerate to a velocity of -0.1635f per 60th of a second
-	*my = -0.1635f;
+	// In english units 32.2 fps2
+	//*my = -0.1635f;
 	*mz = WalkingStride * pz;
+
+	if (g_KeysDown & KEY_SPACE && DownwardVelocity == 0.0f)
+	{
+		DownwardVelocity = 20.0f;
+	}
+	else {
+		DownwardVelocity = DownwardVelocity + (-32.2f / 60.0f);
+	}
+
+	*my = DownwardVelocity / 60.0f;
+
+	return DownwardVelocity;
 }
 
 bool InitializePhysx()
@@ -681,6 +837,19 @@ physx::PxMat44 PhysxSimulate(physx::PxRigidDynamic* pFallingCubeDynamic, BULLET_
 
 void DisposePhysx()
 {
+	vector<TriangleMeshContext>::iterator titer = PhysxContext.tmeshes.begin();
+	for (; titer != PhysxContext.tmeshes.end(); ++titer)
+	{
+		titer->tmActor->release();
+		titer->aTriangleMesh->release();
+		titer->pShape->release();
+	}
+	vector<ConvexMeshContext>::iterator cmiter = PhysxContext.cmeshes.begin();
+	for (; cmiter != PhysxContext.cmeshes.end(); ++cmiter) {
+		cmiter->pShape->release();
+		cmiter->pxConvexMesh->release();
+		cmiter->rigidStatic->release();
+	}
 	if (PhysxContext.aHeightFieldShape) PhysxContext.aHeightFieldShape->release();
 	if (PhysxContext.actor) PhysxContext.actor->release();
 	if (PhysxContext.aHeightField) PhysxContext.aHeightField->release();
@@ -716,7 +885,7 @@ IndexedTriangleList CreateFallingCube()
 {
 	CUBE fallingCube = { -3.0f, -3.0f, -3.0f, 6.0f, 6.0f, 6.0f };
 
-	IndexedTriangleList triList = IndexedTriangleList::CreateCubes(1, &fallingCube);
+	IndexedTriangleList triList = IndexedTriangleList::CreateCubes(1, &fallingCube, 2.0f);
 	AddDynamicActor(triList, physx::PxVec3(0, 40, 0), physx::PxVec3(3, 3, 3));
 
 	return triList;
@@ -787,7 +956,7 @@ IndexedTriangleList LoadAndProcessGeometryFile()
 	CUBE* jsonCubes = nullptr;
 
 	jsonCubes = LoadGeometryJson("mzf.json", &jsonCubeNum);
-	IndexedTriangleList triList = IndexedTriangleList::CreateCubes(jsonCubeNum, jsonCubes);
+	IndexedTriangleList triList = IndexedTriangleList::CreateCubes(jsonCubeNum, jsonCubes, 2.0f);
 
 	for (unsigned int c = 0; c < jsonCubeNum; c++) {
 		AddStaticActor(triList,
@@ -806,44 +975,82 @@ IndexedTriangleList MakeHeightField()
 {
 	UINT32 hfw = 0;
 	UINT32 hfh = 0;
-	float HeightScale = 4.0f;
-	float HorizScale = 8.0f;
+	float HeightScale = 0.2f;
+	float HorizScale = 3.0f;
 
-	Gdiplus::Bitmap img(L"heightfield.png");
-	cout << "height field width x height = " << img.GetWidth() << " x " << img.GetHeight() << endl;
-	hfw = img.GetWidth();
-	hfh = img.GetHeight();
-	Gdiplus::Rect r(0, 0, img.GetWidth(), img.GetHeight());
-	Gdiplus::BitmapData bmpd;
+	//Gdiplus::Bitmap tb(L"ark.png");
+	//cout << "ark.png" << endl;
+	//cout << tb.GetWidth() << ", " << tb.GetHeight() << endl;
+	//cout << tb.GetPixelFormat() << endl;
+	//cout << PixelFormat32bppRGB << endl;
+	//cout << PixelFormat32bppARGB << endl;
+	//cout << PixelFormat32bppPARGB << endl;
+
+
+	//Gdiplus::Bitmap img(L"output1.tif");
+	//cout << "height field width x height = " << img.GetWidth() << " x " << img.GetHeight() << endl;
+	//cout << "pixel format is " << img.GetPixelFormat() << endl;
+
+	FILE* f = nullptr;
+	fopen_s(&f, "ark.gri", "rb");
+	fseek(f, 0, SEEK_END);
+	long fsize = ftell(f);
+	cout << "fsize " << fsize << endl;
+	fseek(f, 0, SEEK_SET);
+	BYTE* buffer = (BYTE*)malloc(fsize);
+	fread_s(buffer, fsize, fsize, 1, f);
+	fclose(f);
+
+	hfw = 128;
+	hfh = 128;
+
+	//Gdiplus::Rect r(0, 0, hfw, hfh);
+	//Gdiplus::BitmapData bmpd;
 	//cout << "pixfmt = " << img.GetPixelFormat() << endl;
 	//if (img.GetPixelFormat() == PixelFormat32bppARGB) cout << "32 bit rgb" << endl;
 	//pixfmt = 2498570
 	//Gdiplus::PixelFormat
-	img.LockBits(&r, Gdiplus::ImageLockModeRead, img.GetPixelFormat(), &bmpd);
-	UINT32* ptr = (UINT32*)bmpd.Scan0;
-	UINT32 max = 0;
-	UINT32 min = 0xffffffff;
-	UINT32 nvals = img.GetWidth() * img.GetHeight();
+	//img.LockBits(&r, Gdiplus::ImageLockModeRead, img.GetPixelFormat(), &bmpd);
+	float* float_buffer = (float*)buffer;
+	float max = 0;
+	float min = 1e9;
+	UINT32 nvals = hfw * hfh;
 	for (UINT32 i = 0; i < nvals; i++) {
-		if (ptr[i] > max) max = ptr[i];
-		if (ptr[i] < min) min = ptr[i];
+		if (float_buffer[i] > 0) {
+			if (float_buffer[i] > max) max = float_buffer[i];
+			if (float_buffer[i] < min) min = float_buffer[i];
+		}
 	}
+	cout << "1st val " << float_buffer[0] << endl;
 	cout << "max " << max << endl;
 	cout << "min " << min << endl;
-	cout << "diff " << max - min << endl;
+
+	max *= 1.0f;
+	min *= 1.0f;
+	cout << "max " << max << endl;
+	cout << "min " << min << endl;
+	float diff = max - min;
+	cout << "diff " << diff << endl;
 
 	physx::PxHeightFieldSample* samples = (physx::PxHeightFieldSample*)malloc(sizeof(physx::PxHeightFieldSample) * nvals);
 	for (UINT y = 0; y < hfh; y++) {
 		for (UINT x = 0; x < hfw; x++) {
 			UINT i = (y * hfw) + x;
-			samples[i].height = MulDiv(ptr[i] - min, 10, max - min);
+			//samples[i].height = MulDiv(float_buffer[i] - min, 10, max - min);
+			if (float_buffer[i] > 0) {
+				samples[i].height = (short)(float_buffer[i] * 1.0f - min);
+			}
+			else {
+				samples[i].height = (short)0;
+			}
 			samples[i].materialIndex0 = 0;
 			samples[i].materialIndex1 = 1;
 			samples[i].clearTessFlag();
 		}
 	}
 
-	img.UnlockBits(&bmpd);
+	free(buffer);
+	//img.UnlockBits(&bmpd);
 
 	// ** make hight field
 	physx::PxHeightFieldDesc hfDesc;
@@ -920,6 +1127,173 @@ IndexedTriangleList MakeHeightField()
 	return itl;
 }
 
+void AddTriangleMesh(IndexedTriangleList &itl)
+{
+	TriangleMeshContext tmctx;
+
+	physx::PxTolerancesScale scale;
+	//scale.length = 0.01f;
+	//scale.speed = 0.01f;
+	physx::PxCookingParams params(scale);
+	// disable mesh cleaning - perform mesh validation on development configurations
+	params.meshPreprocessParams |= physx::PxMeshPreprocessingFlag::eDISABLE_CLEAN_MESH;
+	// disable edge precompute, edges are set for each triangle, slows contact generation
+	params.meshPreprocessParams |= physx::PxMeshPreprocessingFlag::eDISABLE_ACTIVE_EDGES_PRECOMPUTE;
+	// lower hierarchy for internal mesh
+	//params.hint = physx::PxMeshCookingHint::eCOOKING_PERFORMANCE;
+
+	PhysxContext.cooking->setParams(params);
+
+	unsigned int NumVertices = itl.GetFloatCount() / 8;
+	vector<physx::PxVec3> pVerts(NumVertices);
+	float f[8];
+	for (unsigned int i = 0; i < NumVertices; i++) {
+		itl.GetVertex(i, f);
+		physx::PxVec3 newVector(f[0], f[1], f[2]);
+		pVerts.push_back(newVector);
+		cout << f[0] << ", " << f[1] << ", " << f[2] << endl;
+	}
+	cout << "tri mesh nverts = " << NumVertices << endl;
+	physx::PxTriangleMeshDesc meshDesc;
+	meshDesc.points.count = NumVertices;
+	meshDesc.points.stride = sizeof(physx::PxVec3);
+	meshDesc.points.data = &pVerts[0];
+
+	unsigned int NumIndices = itl.GetIntCount();
+	cout << "tri mesh nind = " << NumIndices << std::endl;
+	vector<physx::PxU16> pIndexList(NumIndices);
+	for (unsigned int i = 0; i < NumIndices; i++) {
+		pIndexList.push_back((physx::PxU16)itl.GetIndex(i));
+		cout << itl.GetIndex(i) << endl;
+	}
+	cout << "cooking " << NumIndices / 3 << " triangles" << endl;
+	meshDesc.triangles.count = NumIndices / 3;
+	meshDesc.triangles.stride = 3 * sizeof(physx::PxU16);
+	meshDesc.triangles.data = &pIndexList[0];
+
+	meshDesc.flags.set(physx::PxMeshFlag::e16_BIT_INDICES);
+
+	physx::PxDefaultMemoryOutputStream writeBuffer;
+	bool status = PhysxContext.cooking->cookTriangleMesh(meshDesc, writeBuffer);
+	PX_ASSERT(status);
+	physx::PxDefaultMemoryInputData readBuffer(writeBuffer.getData(), writeBuffer.getSize());
+	tmctx.aTriangleMesh = PhysxContext.mPhysics->createTriangleMesh(readBuffer);
+
+	//tmctx.aTriangleMesh = PhysxContext.cooking->createTriangleMesh(meshDesc,
+		//PhysxContext.mPhysics->getPhysicsInsertionCallback());
+	if (tmctx.aTriangleMesh == nullptr) {
+		cout << "ERROR: triangle mesh is null" << std::endl;
+	}
+	//else {
+		//cout << "Added trimesh " << hex << tmctx.aTriangleMesh << dec << endl;
+	//}
+	physx::PxBounds3 pxBounds3 = tmctx.aTriangleMesh->getLocalBounds();
+	physx::PxVec3 dims = pxBounds3.getDimensions();
+	cout << "DIMS = " << dims << endl;
+	cout << tmctx.aTriangleMesh->getNbTriangles() << endl;
+	cout << tmctx.aTriangleMesh->getNbVertices() << endl;
+	physx::PxTriangleMeshFlags flags = tmctx.aTriangleMesh->getTriangleMeshFlags();
+	if (true == flags.isSet(physx::PxTriangleMeshFlag::e16_BIT_INDICES)) {
+		cout << "16 bit indices are set" << endl;
+	}
+
+
+
+	physx::PxTriangleMeshGeometry tmGeom(tmctx.aTriangleMesh);
+	tmctx.tmActor = PhysxContext.mPhysics->createRigidStatic(physx::PxTransform(physx::PxIdentity));
+	if (tmctx.tmActor == nullptr) {
+		cout << "ERROR: Failed to create triangle mesh actor" << endl;
+	}
+	tmctx.pShape = physx::PxRigidActorExt::createExclusiveShape(*tmctx.tmActor, tmGeom, *PhysxContext.gMaterial);
+	if (tmctx.pShape == nullptr) {
+		cout << "ERROR: Failed to create triangle mesh shape" << endl;
+	}
+	PhysxContext.gScene->addActor(*tmctx.tmActor);
+
+	//physx::PxRigidStatic* lpStatic = PhysxContext.mPhysics->createRigidStatic(physx::PxTransform(pos));
+	//physx::PxShape* lpShp = physx::PxRigidActorExt::createExclusiveShape(
+	//	*lpStatic,
+	//	physx::PxBoxGeometry(size),
+	//	*PhysxContext.gMaterial);
+	//PhysxContext.gScene->addActor(*lpStatic);
+	//trilist.SetRigidStatic(lpStatic, lpShp);
+
+}
+
+void AddConvexMesh(IndexedTriangleList &itl)
+{
+	ConvexMeshContext ctx;
+
+	unsigned int NumVertices = itl.GetFloatCount() / 8;
+	//cout << "num verts in itl " << NumVertices << endl;
+	vector<physx::PxVec3> pVerts;
+	float f[8];
+	for (unsigned int i = 0; i < NumVertices; i++) {
+		itl.GetVertex(i, f);
+		// check if this vertex exists already
+		vector<physx::PxVec3>::iterator vtxi = pVerts.begin();
+		bool canAdd = true;
+		for (; vtxi != pVerts.end(); ++vtxi) {
+			if (vtxi->x == f[0] && vtxi->y == f[1] && vtxi->z == f[2]) canAdd = false;
+		}
+		if (true == canAdd) {
+			pVerts.push_back(physx::PxVec3(f[0], f[1], f[2]));
+			//cout << f[0] << ", " << f[1] << ", " << f[2] << endl;
+		}
+	}
+
+	// convert to set manually
+	//std::set<physx::PxVec3, physx_pxvec3_compare> vertSet;
+	//size_t size = pVerts.size();
+	//cout << "num verts " << pVerts.size() << endl;
+	//for (size_t ii = 0; ii < size; ii++) vertSet.insert(pVerts[ii]);
+	//pVerts.assign(vertSet.begin(), vertSet.end());
+	
+	//cout << "num verts in pVerts " << pVerts.size() << endl;
+
+
+	physx::PxConvexMeshDesc cmd;
+	cmd.points.count = NumVertices;
+	cmd.points.stride = sizeof(physx::PxVec3);
+	cmd.points.data = &pVerts[0];
+	cmd.flags = physx::PxConvexFlag::eCOMPUTE_CONVEX 
+		//| physx::PxConvexFlag::eDISABLE_MESH_VALIDATION 
+		//| physx::PxConvexFlag::eFAST_INERTIA_COMPUTATION
+		;
+
+	//cout << "cooking convex mesh" << endl;
+	ctx.pxConvexMesh = PhysxContext.cooking->createConvexMesh(cmd, PhysxContext.mPhysics->getPhysicsInsertionCallback());
+	if (ctx.pxConvexMesh == nullptr) {
+		cout << "ERROR: Failed to create convex mesh; vertex dump -->" << endl;
+		for (unsigned int i = 0; i < NumVertices; i++) {
+			itl.GetVertex(i, f);
+			cout << f[0] << ", " << f[1] << ", " << f[2] << endl;
+		}
+		return;
+	}
+
+	//cout << "npolygons " << ctx.pxConvexMesh->getNbPolygons() << endl;
+
+	if (ctx.pxConvexMesh == nullptr) {
+		cout << "ERROR: convex mesh is null" << std::endl;
+	}
+	//else {
+		//cout << "Added trimesh " << hex << tmctx.aTriangleMesh << dec << endl;
+	//}
+
+	physx::PxConvexMeshGeometry cmGeom(ctx.pxConvexMesh);
+
+	ctx.rigidStatic = PhysxContext.mPhysics->createRigidStatic(physx::PxTransform(physx::PxIdentity));
+	ctx.pShape = physx::PxRigidActorExt::createExclusiveShape(*ctx.rigidStatic, cmGeom, *PhysxContext.gMaterial);
+	if (ctx.pShape == nullptr) {
+		cout << "ERROR: Failed to create triangle mesh shape" << endl;
+	}
+	PhysxContext.gScene->addActor(*ctx.rigidStatic);
+
+	PhysxContext.cmeshes.push_back(ctx);
+
+}
+
 DWORD WINAPI RenderThread(void* parm)
 {
 	HWND hWnd = (HWND)parm;
@@ -939,6 +1313,8 @@ DWORD WINAPI RenderThread(void* parm)
 	unsigned int bulletWait = 0;
 	char TextBuffer[80];
 	ScreenBuffer sb;
+	float DownwardVelocity = 0.0f;
+	GLuint MultiSampleFbo = 0;
 
 	cout << "Begin render thread" << endl;
 
@@ -972,23 +1348,73 @@ DWORD WINAPI RenderThread(void* parm)
 		cout << "Physx successfully initialized" << endl;
 	}
 
+	GetClientRect(hWnd, &clientRect);
+
 	// setup the open gl rendering context
 	// clear color, other global settings
-	SetupRenderingContext();
+	MultiSampleFbo = SetupRenderingContext(clientRect.right - clientRect.left, clientRect.bottom - clientRect.top);
+
+	// while we have a reference to the client size, set the viewport
+	glViewport(0, 0, clientRect.right - clientRect.left, clientRect.bottom - clientRect.top);
+
 
 	// create triangle lists
 	//lpContext.lpIdtFile = new IndexedTriangleList(LoadAndProcessGeometryFile());	// geometry json file
 	lpContext.lpIdtFallingCube = new IndexedTriangleList(CreateFallingCube());		// a falling cube
-	lpContext.lpIdtBulletBox = new IndexedTriangleList(IndexedTriangleList::CreateSphere(1.0f, 16, 16));
+	//lpContext.lpIdtBulletBox = new IndexedTriangleList(IndexedTriangleList::CreateSphere(1.0f, 16, 16));
 	IndexedTriangleList SkyBox = IndexedTriangleList::CreateSkyBox();
-	IndexedTriangleList cyl = IndexedTriangleList::CreateCylinder(1.0f, 6.0f, 10, 16);
-	IndexedTriangleList cone = IndexedTriangleList::CreateCone(10.0f, 20.0f, 16);
-	IndexedTriangleList terrain = MakeHeightField();
+	//IndexedTriangleList cyl = IndexedTriangleList::CreateCylinder(1.0f, 6.0f, 1, 8);
+	//IndexedTriangleList cone = IndexedTriangleList::CreateCone(10.0f, 20.0f, 16);
+	//IndexedTriangleList terrain = MakeHeightField();
+	//CUBE floorCube[5] = {
+	//	{ -100,-1,-100,200, 1,200 },
+	//	{ -100, 0,-100,200,10,  1},
+	//	{ -100, 0,  99,200,10,  1},
+	//	{ -100, 0,-100,  1,10,200},
+	//	{   99, 0,-100,  1,10,200}
+	//};
+	//CUBE floorCube[5] = {
+	//	{ -250,-1,-250,500, 1,500 }
+	//};
+	//IndexedTriangleList floorITL = IndexedTriangleList::CreateCubes(5, floorCube, 20.0f);
+	//for (int fc = 0; fc < 5; fc++) {
+	//	AddStaticActor(floorITL, 
+	//		physx::PxVec3(
+	//			floorCube[fc].ox + (floorCube[fc].dx / 2.0f),
+	//			floorCube[fc].oy + (floorCube[fc].dy / 2.0f),
+	//			floorCube[fc].oz + (floorCube[fc].dz / 2.0f)),
+	//		physx::PxVec3(
+	//			floorCube[fc].dx / 2.0f,
+	//			floorCube[fc].dy / 2.0f,
+	//			floorCube[fc].dz / 2.0f)
+	//	);
+	//}
+
+	VMF_FILE_DATA VmfData;
+	////ParseVMFFile("hostage_grandcentral.vmf", VmfData);
+	//ParseVMFFile("test1.vmf", VmfData);
+	ParseVMFFile("de_subway.vmf", VmfData);
+	std::vector<IndexedTriangleList> VmfTriList;
+	CreateIndexedTriangleListsFromVMF(VmfData, VmfTriList);
+	cout << "Num call lists = " << VmfTriList.size() << endl;
+
+	cout << "Bulding physics..." << endl;
+	std::vector<IndexedTriangleList>::iterator vmfi = VmfTriList.begin();
+	for (; vmfi != VmfTriList.end(); ++vmfi)
+	{
+		//AddTriangleMesh(*vmfi);
+		AddConvexMesh(*vmfi);
+	}
 
 	// load a texture
 	//SetupTextures(&lpContext);
-	TextureContext tileTexture(L"kitchtilec.png");
-	TextureContext grassTexture(L"grass1.png");
+	TextureContext texOrangeBox(L"orange_box.png", true);
+	TextureContext texTanBox(L"tan_box.png", true);
+	TextureContext texBlueBox(L"blue_box.png", true);
+	TextureContext texDarkBlueBox(L"dblue_box.png", true);
+	TextureContext texLgtGreenBox(L"lgreen_box.png", true);
+	TextureContext texTurqoiseBox(L"turq_box.png", true);
+	TextureContext texVioletBox(L"violet_box.png", true);
 	SetupCubeMap(&lpContext);
 
 	// create the shaders
@@ -1008,14 +1434,10 @@ DWORD WINAPI RenderThread(void* parm)
 	lpContext.lpWorldShader->SetCubeMapTexture(1); // set uniform
 
 	//   set the projection matrix
-	GetClientRect(hWnd, &clientRect);
 	glm::mat4 proj = glm::perspective(45.0f,
 		(float)(clientRect.right - clientRect.left) / (float)(clientRect.bottom - clientRect.top),
 		0.1f, 1000.0f);
 	lpContext.lpWorldShader->SetProjMatrix(&proj[0][0]);
-
-	// while we have a reference to the client size, set the viewport
-	glViewport(0, 0, clientRect.right - clientRect.left, clientRect.bottom - clientRect.top);
 
 	glm::vec3 lIntensity(1.0f, 1.0f, 1.0f);
 	glm::vec3 lDiffuse(0.3f, 0.3f, 0.3f);
@@ -1051,18 +1473,23 @@ DWORD WINAPI RenderThread(void* parm)
 
 			// get user movement based on keys
 			float mx = 0, my = 0, mz = 0;
-			ApplyKeys(FramesPerSecond, &mx, &my, &mz);
+			//cout << "down vel " << DownwardVelocity << endl;
+			DownwardVelocity = ApplyKeys(FramesPerSecond, &mx, &my, &mz, DownwardVelocity);
 
 			// move the user
 			physx::PxControllerCollisionFlags collisionFlags =
 				PhysxContext.pChar->move(physx::PxVec3(mx, my, mz), 0.0f, 1.0f / 60.0f, physx::PxControllerFilters());
-			//if (collisionFlags.isSet(physx::PxControllerCollisionFlag::eCOLLISION_DOWN))
-			//{
+			if (collisionFlags.isSet(physx::PxControllerCollisionFlag::eCOLLISION_DOWN))
+			{
+				// player has hit something below
+				// reset downward velocity to zero
+
 				//sb.AddString("Collission!!");
 				//cout << "collision!" << endl;
 				//cout << "x:" << g_ex << " y:" << g_ey << " z:" << g_ez << endl;
 				//cout << "hit the floor" << endl;
-			//}
+				DownwardVelocity = 0.0f;
+			}
 
 			// simulate physx
 			physx::PxMat44 blockPose = PhysxSimulate(lpContext.lpIdtFallingCube->get_RigidDynamic(), bullets);
@@ -1114,19 +1541,36 @@ DWORD WINAPI RenderThread(void* parm)
 			glm::mat3 normViewMatrix = glm::inverse(glm::transpose(glm::mat3(ViewMatrix)));
 			lpContext.lpWorldShader->SetNormalViewMatrix(&normViewMatrix[0][0]);
 
-			grassTexture.Bind(GL_TEXTURE0);
+			texTurqoiseBox.Bind(GL_TEXTURE0);
 
-			// BEGIN draw the json cubes
-			lpContext.lpWorldShader->SetModelMatrix(terrain.GetModelMatrixPointer());
-			normModelMatrix = terrain.GetNormalModelMatrix();
+			/** BEGIN: CUBES **/
+
+			//lpContext.lpWorldShader->SetLightSpecular(&lSpecularNone[0]);
+			//floorITL.BindBuffers();
+			//floorITL.BindAttribs();
+			//floorITL.DrawElements();
+			//floorITL.UnbindAttribs();
+			//lpContext.lpWorldShader->SetLightSpecular(&lSpecular[0]);
+
+			/** END: CUBES **/
+
+			//ModelMatrix = glm::scale(glm::vec3(1.0f / 12.0f, 1.0f / 12.0f, 1.0f / 12.0f));
+			ModelMatrix = glm::mat4(1.0f);
+			lpContext.lpWorldShader->SetModelMatrix(&ModelMatrix[0][0]);
+			normModelMatrix = glm::inverse(glm::transpose(glm::mat3(ModelMatrix)));
 			lpContext.lpWorldShader->SetNormalModelMatrix(&normModelMatrix[0][0]);
+			glDisable(GL_CULL_FACE);
 			lpContext.lpWorldShader->SetLightSpecular(&lSpecularNone[0]);
-			terrain.BindBuffers();
-			terrain.BindAttribs();
-			terrain.DrawElements();
-			terrain.UnbindAttribs();
+			std::vector<IndexedTriangleList>::iterator clIter = VmfTriList.begin();
+			for (; clIter != VmfTriList.end(); ++clIter)
+			{
+				clIter->BindBuffers();
+				clIter->BindAttribs();
+				clIter->DrawElements();
+				clIter->UnbindAttribs();
+			}
 			lpContext.lpWorldShader->SetLightSpecular(&lSpecular[0]);
-			// END draw the json cubes
+			glEnable(GL_CULL_FACE);
 
 			// draw skybox
 			ModelMatrix = glm::mat4(1.0);
@@ -1141,6 +1585,8 @@ DWORD WINAPI RenderThread(void* parm)
 			lpContext.lpWorldShader->SetDrawSkyBox(0);
 			// end draw skybox
 
+			/** BEGIN: TREE **/
+			/*
 			// cylinder
 			ModelMatrix = glm::translate(glm::vec3(10.0f, 3.0f, 10.0f));
 			lpContext.lpWorldShader->SetModelMatrix(&ModelMatrix[0][0]);
@@ -1170,8 +1616,11 @@ DWORD WINAPI RenderThread(void* parm)
 			cone.UnbindAttribs();
 			lpContext.lpWorldShader->SetUseMatColor(0);
 			// end cylinder
+			*/
+			/** END: TREE **/
 
-			// model matrix (view matrix is the same)
+			/** BEGIN: falling block **/
+			/*
 			lpContext.lpWorldShader->SetModelMatrix(&blockPose[0][0]);
 			glm::mat3 glmNormModelMatrix;
 			glmNormModelMatrix[0][0] = blockPose[0][0]; glmNormModelMatrix[0][1] = blockPose[0][1]; glmNormModelMatrix[0][2] = blockPose[0][2];
@@ -1180,17 +1629,17 @@ DWORD WINAPI RenderThread(void* parm)
 			normModelMatrix = glm::inverse(glm::transpose(glmNormModelMatrix));
 			lpContext.lpWorldShader->SetNormalModelMatrix(&normModelMatrix[0][0]);
 
-			tileTexture.Bind(GL_TEXTURE0);
-			//lpContext.lpWorldShader->SetTexture(0); // set uniform
+			texLgtGreenBox.Bind(GL_TEXTURE0);
 
-			// BEGIN draw the falling block
 			lpContext.lpIdtFallingCube->BindBuffers();
 			lpContext.lpIdtFallingCube->BindAttribs();
 			lpContext.lpIdtFallingCube->DrawElements();
 			lpContext.lpIdtFallingCube->UnbindAttribs();
-			// END draw the falling block
+			*/
+			/** END: falling block **/
 
-			// draw the bullets
+			/** BEGIN: bullets **/
+			/*
 			lpContext.lpIdtBulletBox->BindBuffers();
 			lpContext.lpIdtBulletBox->BindAttribs();
 			for (int b = 0; b < 10; b++) {
@@ -1206,7 +1655,8 @@ DWORD WINAPI RenderThread(void* parm)
 				}
 			}
 			lpContext.lpIdtBulletBox->UnbindAttribs();
-			// end draw the bullets
+			*/
+			/** END: bullets **/
 
 			glBindBuffer(GL_ARRAY_BUFFER, 0);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
@@ -1244,7 +1694,18 @@ DWORD WINAPI RenderThread(void* parm)
 			glCallLists((GLsizei)strlen(TextBuffer), GL_UNSIGNED_BYTE, TextBuffer);
 			glPopAttrib();
 
+			// multi sample fbo
+			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, MultiSampleFbo);
+			glDrawBuffer(GL_BACK);
+			glBlitFramebuffer(0, 0, clientRect.right - clientRect.left, clientRect.bottom - clientRect.top,
+				0, 0, clientRect.right - clientRect.left, clientRect.bottom - clientRect.top,
+				GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
 			SwapBuffers(hdc);
+
+			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, MultiSampleFbo);
+
 		}
 		else {
 			// if thread stop, then, break the loop
@@ -1268,6 +1729,8 @@ DWORD WINAPI RenderThread(void* parm)
 
 	// clean up
 
+	// TODO release the multi sample fbo
+
 	FreeGlFont(&lpContext);
 
 	lpContext.lpWorldShader->FreeResources();
@@ -1282,8 +1745,8 @@ DWORD WINAPI RenderThread(void* parm)
 	//delete lpContext.lpIdtFile;
 	lpContext.lpIdtFallingCube->FreeResources();
 	delete lpContext.lpIdtFallingCube;
-	lpContext.lpIdtBulletBox->FreeResources();
-	delete lpContext.lpIdtBulletBox;
+	//lpContext.lpIdtBulletBox->FreeResources();
+	//delete lpContext.lpIdtBulletBox;
 
 	if (hglrc) {
 		wglMakeCurrent(hdc, nullptr);
@@ -1358,11 +1821,13 @@ HGLRC InitOpengl(HWND hwnd, HDC hdc)
 	}
 	GetGlFuncs();
 
-	if (wglSwapIntervalEXT(1)) {
-		cout << "wglSwapIntervalEXT is success" << endl;
-	}
-	else {
-		cout << "INFO: wglSwapIntervalEXT FAILED" << endl;
+	if (wglSwapIntervalEXT) {
+		if (wglSwapIntervalEXT(1)) {
+			cout << "wglSwapIntervalEXT is success" << endl;
+		}
+		else {
+			cout << "INFO: wglSwapIntervalEXT FAILED" << endl;
+		}
 	}
 
 	return hrc;
@@ -1524,13 +1989,13 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	cout << dmScreenSettings.dmPelsHeight << endl;
 	cout << dmScreenSettings.dmBitsPerPel << endl;
 
-	ChangeDisplaySettings(&dmScreenSettings, CDS_FULLSCREEN);
+	//ChangeDisplaySettings(&dmScreenSettings, CDS_FULLSCREEN);
 
 	HWND hwnd = CreateWindowEx(WS_EX_APPWINDOW, szWindowClass, szTitle, 
-		WS_POPUP, //WS_OVERLAPPEDWINDOW^WS_THICKFRAME,
-		0, 0, dmScreenSettings.dmPelsWidth, dmScreenSettings.dmPelsHeight, 
-		//WS_OVERLAPPEDWINDOW^WS_THICKFRAME,
-		//0, 0, 640, 480,
+		//WS_POPUP, //WS_OVERLAPPEDWINDOW^WS_THICKFRAME,
+		//0, 0, dmScreenSettings.dmPelsWidth, dmScreenSettings.dmPelsHeight, 
+		WS_OVERLAPPEDWINDOW^WS_THICKFRAME,
+		0, 0, 640, 480,
 		nullptr, nullptr, hInstance, nullptr);
 
    if (!hwnd)
@@ -1640,6 +2105,15 @@ void HandleRawInput(LPARAM lParam)
 		else if (raw->data.keyboard.VKey == 0x45 && raw->data.keyboard.Message == WM_KEYUP)
 		{
 			g_KeysDown &= ~KEY_E;
+		}
+		//space ?
+		if (raw->data.keyboard.VKey == VK_SPACE && raw->data.keyboard.Message == WM_KEYDOWN)
+		{
+			g_KeysDown |= KEY_SPACE;
+		}
+		else if (raw->data.keyboard.VKey == VK_SPACE && raw->data.keyboard.Message == WM_KEYUP)
+		{
+			g_KeysDown &= ~KEY_SPACE;
 		}
 	}
 	else if (raw->header.dwType == RIM_TYPEMOUSE)

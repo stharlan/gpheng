@@ -1,0 +1,19 @@
+[general]
+[georeference]
+nrows=128
+ncols=128
+xmin=389994
+ymin=4029994.00029999949
+xmax=400006.000000002794
+ymax=4040006.00030000228
+projection=+proj=utm +zone=15 +ellps=GRS80 +towgs84=0,0,0,-0,-0,-0,0 +units=m +no_defs 
+[data]
+datatype=FLT4S
+nodatavalue=-3.4028234663852886e+38
+byteorder=little
+nbands=1
+minvalue=309.933990478515625
+maxvalue=431.705657958984375
+categorical=FALSE
+[description]
+layername=Layer_1

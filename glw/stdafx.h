@@ -20,9 +20,14 @@
 #include <map>
 #include <iostream>
 #include <fstream>
+#include <sstream>
+#include <string>
+#include <algorithm>
+#include <set>
 
 // reference additional headers your program requires here
 #include <gl/GL.h>
+#include <gl/GLU.h>
 #include <objidl.h>
 #include <gdiplus.h>
 
@@ -41,6 +46,9 @@
 #include <foundation/PxAllocatorCallback.h>
 #include <foundation/PxErrorCallback.h>
 
+#include <QuickHull.hpp>
+#include <Structs/Vector3.hpp>
+
 #include "glcorearb.h"
 
 using namespace Gdiplus;
@@ -55,6 +63,7 @@ using namespace Gdiplus;
 #include "glw.h"
 #include "ScreenBuffer.h"
 #include "IndexedTriangleList.h"
+#include "vmf_parser.h"
 #include "ShaderProgramContext.h"
 #include "WorldShaderProgramContext.h"
 #include "ColorWorldShader.h"
